@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trafik Çözücü</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one column — road-sign header, the parking lot board, a row of controls, level plates. */
+:root {
+  --bg: #e7e9e4;          /* concrete */
+  --fg: #1d2420;
+  --muted: #5d665f;
+  --lot: #3a3f3c;         /* asphalt */
+  --lot-line: #d9d3b8;    /* painted bay lines */
+  --curb: #f2c230;        /* kerb / signage yellow */
+  --panel: #f7f8f4;
+  --edge: #c9cdc4;
+  --hero: #d7322b;        /* the car you free */
+  --good: #2f8a4c;
+  --car-1: #2d6fb7; --car-2: #e48a1f; --car-3: #6a4fb3; --car-4: #1f9b8f;
+  --car-5: #c24d86; --car-6: #6f8f2d; --car-7: #8a6239; --car-8: #3e8fd6;
+  --truck-1: #345c4a; --truck-2: #7a7f87; --truck-3: #4d6b78; --truck-4: #2f4a7a;
+  --glass: rgba(220, 235, 245, .78);
+  --shadow: rgba(0, 0, 0, .35);
+  --display: "Bungee", "Arial Black", Impact, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161a18; --fg: #e8ebe6; --muted: #9aa39c; --lot: #262a28; --lot-line: #b9b293;
+    --curb: #e7b726; --panel: #1f2421; --edge: #343b37; --good: #4fb56d;
+    --glass: rgba(170, 195, 215, .62); --shadow: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161a18; --fg: #e8ebe6; --muted: #9aa39c; --lot: #262a28; --lot-line: #b9b293;
+  --curb: #e7b726; --panel: #1f2421; --edge: #343b37; --good: #4fb56d;
+  --glass: rgba(170, 195, 215, .62); --shadow: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sign {
+  font-family: var(--display); font-size: 1.5rem; line-height: 1; letter-spacing: .02em;
+  background: var(--curb); color: #1d2420; padding: 10px 14px 8px; border-radius: 6px;
+  border: 3px solid #1d2420; box-shadow: 0 0 0 3px var(--curb); margin: 3px; text-wrap: balance;
+}
+.level-tag { font-family: var(--display); font-size: .95rem; color: var(--muted); letter-spacing: .04em; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 10px; }
+.stat b { display: block; font-family: var(--display); font-weight: 400; font-size: 1.4rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+
+/* The lot: 6×6 bays, exit cut into the right kerb on row 3 */
+.board {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 1;
+  background: var(--lot); border-radius: 14px; padding: 3.2%;
+  box-shadow: inset 0 0 0 6px var(--curb), 0 10px 24px -12px var(--shadow);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.exit {
+  position: absolute; right: -2px; width: 4.6%; top: calc(3.2% + 93.6% * 2 / 6); height: calc(93.6% / 6);
+  background: var(--lot); display: grid; place-items: center;
+}
+.exit::after {
+  content: ""; width: 0; height: 0; border-left: 9px solid var(--lot-line);
+  border-top: 7px solid transparent; border-bottom: 7px solid transparent; opacity: .9;
+  animation: nudge 1.4s ease-in-out infinite;
+}
+@keyframes nudge { 50% { transform: translateX(3px); } }
+.lot { position: relative; width: 100%; height: 100%; }
+.bays {
+  position: absolute; inset: 0; border-radius: 4px;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--lot-line) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--lot-line) 22%, transparent) 1px, transparent 1px);
+  background-size: calc(100% / 6) calc(100% / 6);
+}
+.ghost {
+  position: absolute; border: 2px dashed var(--curb); border-radius: 10px; pointer-events: none;
+  animation: blink 1s ease-in-out 3; opacity: 0;
+}
+@keyframes blink { 50% { opacity: 1; } }
+
+.car {
+  position: absolute; padding: 0; border: 0; background: transparent; cursor: grab;
+  transition: left .14s ease, top .14s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.car.dragging { transition: none; cursor: grabbing; z-index: 5; }
+.car .body {
+  position: absolute; inset: 6%; border-radius: 12px; background: var(--paint);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .22), inset 0 3px 0 rgba(255, 255, 255, .22), 0 4px 8px -3px var(--shadow);
+}
+.car.h .body { inset: 9% 3%; }
+.car.v .body { inset: 3% 9%; }
+.car .body::before, .car .body::after {     /* windscreen + rear window */
+  content: ""; position: absolute; background: var(--glass); border-radius: 4px;
+}
+.car.h .body::before { right: 14%; top: 16%; bottom: 16%; width: 13%; }
+.car.h .body::after  { left: 12%;  top: 20%; bottom: 20%; width: 8%; }
+.car.v .body::before { bottom: 14%; left: 16%; right: 16%; height: 13%; }
+.car.v .body::after  { top: 12%;  left: 20%; right: 20%; height: 8%; }
+.car.truck.h .body::after { left: 6%; width: 52%; top: 14%; bottom: 14%; background: rgba(255, 255, 255, .14); }
+.car.truck.v .body::after { top: 6%; height: 52%; left: 14%; right: 14%; background: rgba(255, 255, 255, .14); }
+.car.hero .body { box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .22), inset 0 3px 0 rgba(255, 255, 255, .25), 0 0 0 3px var(--curb), 0 6px 12px -3px var(--shadow); }
+.car:focus-visible { outline: none; }
+.car:focus-visible .body { outline: 3px solid var(--curb); outline-offset: 2px; }
+.car.hinted .body { animation: pulse .5s ease-in-out 4; }
+@keyframes pulse { 50% { transform: scale(1.06); } }
+.car.leaving { transition: left .6s cubic-bezier(.5, 0, .9, .4); z-index: 6; }
+
+.controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+button.ctl {
+  font: 700 .9rem var(--body); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--edge); border-bottom-width: 3px; border-radius: 8px; padding: 10px 6px; cursor: pointer;
+}
+button.ctl:hover:not(:disabled) { border-color: var(--muted); }
+button.ctl:active:not(:disabled) { transform: translateY(1px); border-bottom-width: 2px; }
+button.ctl:disabled { opacity: .45; cursor: default; }
+button:focus-visible { outline: 3px solid var(--curb); outline-offset: 2px; }
+
+.help { margin: 0; color: var(--muted); font-size: .92rem; max-width: 65ch; }
+
+.levels h2 { font-family: var(--display); font-weight: 400; font-size: .95rem; letter-spacing: .04em; margin: 0 0 8px; }
+.plates { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.plate {
+  font: 400 1rem var(--display); color: var(--fg); background: var(--panel); cursor: pointer;
+  border: 2px solid var(--edge); border-radius: 6px; padding: 6px 0 4px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.plate small { font: 700 .7rem var(--body); letter-spacing: .1em; color: var(--curb); min-height: 1em; }
+.plate.current { border-color: var(--fg); }
+.plate.done small { color: var(--curb); }
+
+/* Win overlay */
+.win {
+  position: absolute; inset: 0; border-radius: 14px; display: grid; place-items: center; z-index: 10;
+  background: color-mix(in srgb, var(--lot) 82%, transparent); backdrop-filter: blur(2px);
+}
+.win-card { background: var(--panel); color: var(--fg); border-radius: 12px; padding: 20px 22px; text-align: center; width: min(86%, 300px); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 30px -10px var(--shadow); }
+.win-card h3 { font-family: var(--display); font-weight: 400; font-size: 1.4rem; margin: 0; line-height: 1.1; }
+.win-card p { margin: 0; color: var(--muted); }
+.stars { font-size: 1.9rem; letter-spacing: .15em; color: var(--curb); line-height: 1; }
+.stars .off { color: var(--edge); }
+.win-card button.ctl { background: var(--curb); color: #1d2420; border-color: #b58f12; }
+
+@media (prefers-reduced-motion: reduce) {
+  .car, .car.leaving { transition: none; }
+  .exit::after, .car.hinted .body, .ghost { animation: none; }
+  .ghost { opacity: 1; }
+}
+@media (max-width: 400px) {
+  .sign { font-size: 1.2rem; }
+  .controls { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="sign">Trafik Çözücü</div>
+    <div class="level-tag" id="levelTag">Bölüm 1 / 10</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><span>Hamle</span><b id="moves">0</b></div>
+    <div class="stat"><span>En az</span><b id="best">0</b></div>
+    <div class="stat"><span>Rekorun</span><b id="record">–</b></div>
+  </div>
+
+  <div class="board" id="board">
+    <div class="exit" aria-hidden="true"></div>
+    <div class="lot" id="lot"><div class="bays"></div></div>
+    <div class="win" id="win" hidden>
+      <div class="win-card">
+        <h3 id="winTitle">Yol açıldı!</h3>
+        <div class="stars" id="winStars"></div>
+        <p id="winText"></p>
+        <button class="ctl" id="nextBtn" type="button">Sonraki bölüm</button>
+        <button class="ctl" id="replayBtn" type="button" style="background:var(--panel);color:var(--fg);border-color:var(--edge)">Tekrar oyna</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="ctl" id="undoBtn" type="button">Geri al</button>
+    <button class="ctl" id="resetBtn" type="button">Baştan</button>
+    <button class="ctl" id="hintBtn" type="button">İpucu</button>
+    <button class="ctl" id="skipBtn" type="button">Atla</button>
+  </div>
+
+  <p class="help">Araçları sürükleyerek ileri geri kaydır. Yatay araçlar sağa sola, dikey araçlar yukarı aşağı gider. Kırmızı arabayı sağdaki çıkışa ulaştır. Klavyede bir araca Tab ile gelip ok tuşlarıyla da oynayabilirsin.</p>
+
+  <section class="levels">
+    <h2>Bölümler</h2>
+    <div class="plates" id="plates"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const N = 6, EXIT_ROW = 2;
+  // Each level was checked with a breadth-first solver; `min` is the shortest solution
+  // (one move = sliding one vehicle any distance).
+  const LEVELS = [
+    { min: 2,  map: '............AA.B.....B..............' },
+    { min: 4,  map: '.......DDC..AAGCI.BBG.I.EE.FFFHH....' },
+    { min: 6,  map: '..EENNGC.LLIGCAABIGMMMB.FJJDKKF..DHH' },
+    { min: 8,  map: 'FFC.JJHHCIIBAAMOEBKKMOE..LL.ENGG.DDN' },
+    { min: 10, map: 'LLGG...MMCCCAAIE.HKFIE.HKFDBB...DJJ.' },
+    { min: 13, map: 'IBCCDDIB.EEHOBAAGHOKNNGL.KJJFL.MMMFL' },
+    { min: 17, map: 'LLJJJNBB.MMNI.AADEICG.DEICGHHH.KKFF.' },
+    { min: 20, map: 'H.FFFIH.DDMIAALJMCEELJMCKBBB.CKGG.NN' },
+    { min: 24, map: 'KKK.EC..D.ECAADGECL.JGHHLBJMM..BFFII' },
+    { min: 28, map: '.BB..KLL.MCKHAAMCDH.EFCDG.EFJJG...II' },
+  ];
+
+  const $ = id => document.getElementById(id);
+  const lot = $('lot'), board = $('board');
+  const store = {
+    get() { try { return JSON.parse(localStorage.getItem('trafik-cozucu') || '{}'); } catch { return {}; } },
+    set(v) { try { localStorage.setItem('trafik-cozucu', JSON.stringify(v)); } catch {} },
+  };
+  let progress = store.get();          // { records: {levelIndex: moves}, level }
+  progress.records = progress.records || {};
+
+  let level = Math.min(progress.level || 0, LEVELS.length - 1);
+  let cars = [], pos = [], history = [], moves = 0, won = false, els = [];
+
+  function parse(map) {
+    const cells = {};
+    [...map].forEach((ch, i) => { if (ch !== '.') (cells[ch] = cells[ch] || []).push(i); });
+    const ids = Object.keys(cells).sort((a, b) => (a === 'A' ? -1 : b === 'A' ? 1 : a.localeCompare(b)));
+    let c = 0, t = 0;
+    return ids.map(id => {
+      const list = cells[id], first = list[0];
+      const h = list[1] === first + 1;
+      const len = list.length;
+      const paint = id === 'A' ? 'var(--hero)' : len === 3 ? `var(--truck-${(t++ % 4) + 1})` : `var(--car-${(c++ % 8) + 1})`;
+      return { id, h, len, fixed: h ? Math.floor(first / N) : first % N, start: h ? first % N : Math.floor(first / N), paint };
+    });
+  }
+
+  function grid(p) {
+    const g = new Array(N * N).fill(-1);
+    cars.forEach((car, i) => {
+      for (let k = 0; k < car.len; k++) {
+        const r = car.h ? car.fixed : p[i] + k, c = car.h ? p[i] + k : car.fixed;
+        g[r * N + c] = i;
+      }
+    });
+    return g;
+  }
+
+  // How far car i can slide in each direction from its current spot.
+  function range(i, p = pos) {
+    const g = grid(p), car = cars[i];
+    const at = k => (car.h ? car.fixed * N + k : k * N + car.fixed);
+    let lo = p[i], hi = p[i];
+    while (lo - 1 >= 0 && g[at(lo - 1)] === -1) lo--;
+    while (hi + car.len < N && g[at(hi + car.len)] === -1) hi++;
+    return [lo, hi];
+  }
+
+  function place(i, value) {
+    const car = cars[i], el = els[i], u = 100 / N;
+    const x = car.h ? value : car.fixed, y = car.h ? car.fixed : value;
+    el.style.left = x * u + '%';
+    el.style.top = y * u + '%';
+  }
+
+  function build() {
+    lot.querySelectorAll('.car, .ghost').forEach(e => e.remove());
+    const L = LEVELS[level];
+    cars = parse(L.map);
+    pos = cars.map(c => c.start);
+    history = []; moves = 0; won = false;
+    $('win').hidden = true;
+    els = cars.map((car, i) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = `car ${car.h ? 'h' : 'v'}${car.len === 3 ? ' truck' : ''}${i === 0 ? ' hero' : ''}`;
+      el.style.setProperty('--paint', car.paint);
+      el.style.width = (car.h ? car.len : 1) * 100 / N + '%';
+      el.style.height = (car.h ? 1 : car.len) * 100 / N + '%';
+      el.setAttribute('aria-label', i === 0 ? 'Kırmızı araba' : `${car.len === 3 ? 'Kamyon' : 'Araba'} ${car.id}, ${car.h ? 'yatay' : 'dikey'}`);
+      el.innerHTML = '<span class="body"></span>';
+      lot.appendChild(el);
+      attach(el, i);
+      return el;
+    });
+    cars.forEach((_, i) => place(i, pos[i]));
+    progress.level = level; store.set(progress);
+    render();
+  }
+
+  function render() {
+    $('levelTag').textContent = `Bölüm ${level + 1} / ${LEVELS.length}`;
+    $('moves').textContent = moves;
+    $('best').textContent = LEVELS[level].min;
+    const rec = progress.records[level];
+    $('record').textContent = rec != null ? rec : '–';
+    $('undoBtn').disabled = !history.length || won;
+    $('resetBtn').disabled = !history.length && !won;
+    $('hintBtn').disabled = won;
+    $('skipBtn').disabled = level >= LEVELS.length - 1;
+    const plates = $('plates');
+    plates.innerHTML = '';
+    LEVELS.forEach((L, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const r = progress.records[i];
+      b.className = 'plate' + (i === level ? ' current' : '') + (r != null ? ' done' : '');
+      b.innerHTML = `${i + 1}<small>${r != null ? '★'.repeat(stars(i, r)) : ''}</small>`;
+      b.setAttribute('aria-label', `Bölüm ${i + 1}${r != null ? `, ${stars(i, r)} yıldız` : ''}`);
+      b.onclick = () => { level = i; build(); };
+      plates.appendChild(b);
+    });
+  }
+
+  function stars(i, m) {
+    const min = LEVELS[i].min;
+    return m <= min ? 3 : m <= Math.ceil(min * 1.5) ? 2 : 1;
+  }
+
+  function commit(i, value) {
+    if (value === pos[i]) return;
+    history.push(pos.slice());
+    pos[i] = value;
+    moves++;
+    clearHint();
+    render();
+    if (i === 0 && pos[0] + cars[0].len === N) finish();
+  }
+
+  function finish() {
+    won = true;
+    const el = els[0];
+    el.classList.add('leaving');
+    requestAnimationFrame(() => { el.style.left = '120%'; });
+    const prev = progress.records[level];
+    if (prev == null || moves < prev) progress.records[level] = moves;
+    store.set(progress);
+    const s = stars(level, moves), min = LEVELS[level].min;
+    setTimeout(() => {
+      $('winStars').innerHTML = '★'.repeat(s) + `<span class="off">${'★'.repeat(3 - s)}</span>`;
+      $('winText').textContent = moves <= min
+        ? `${moves} hamle. Bundan kısası yok.`
+        : `${moves} hamlede çözdün. En kısa çözüm ${min} hamle.`;
+      const last = level >= LEVELS.length - 1;
+      $('winTitle').textContent = last ? 'Bütün otopark boşaldı!' : 'Yol açıldı!';
+      $('nextBtn').hidden = last;
+      $('win').hidden = false;
+      (last ? $('replayBtn') : $('nextBtn')).focus();
+      render();
+    }, 520);
+    render();
+  }
+
+  // Dragging: pointer events cover mouse, touch and pen.
+  function attach(el, i) {
+    let drag = null;
+    el.addEventListener('pointerdown', e => {
+      if (won) return;
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      const [lo, hi] = range(i);
+      drag = { x: e.clientX, y: e.clientY, from: pos[i], lo, hi, cell: lot.clientWidth / N, cur: pos[i] };
+      el.classList.add('dragging');
+      el.focus({ preventScroll: true });
+    });
+    el.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const d = (cars[i].h ? e.clientX - drag.x : e.clientY - drag.y) / drag.cell;
+      drag.cur = Math.max(drag.lo, Math.min(drag.hi, drag.from + d));
+      place(i, drag.cur);
+    });
+    const end = () => {
+      if (!drag) return;
+      const to = Math.round(drag.cur);
+      drag = null;
+      el.classList.remove('dragging');
+      place(i, to);
+      commit(i, to);
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('keydown', e => {
+      if (won) return;
+      const dir = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+      if (!dir) return;
+      const horizontalKey = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+      if (horizontalKey !== cars[i].h) return;
+      e.preventDefault();
+      const [lo, hi] = range(i);
+      const to = Math.max(lo, Math.min(hi, pos[i] + dir));
+      place(i, to);
+      commit(i, to);
+    });
+  }
+
+  // Hint: breadth-first search from the current position, return the first move of a shortest path.
+  function solveFrom(start) {
+    const key = p => p.join(',');
+    const prev = new Map([[key(start), null]]);
+    let queue = [start];
+    while (queue.length) {
+      const next = [];
+      for (const p of queue) {
+        if (p[0] + cars[0].len === N) {
+          let k = key(p), steps = [];
+          while (prev.get(k)) { const s = prev.get(k); steps.unshift(s.move); k = s.from; }
+          return steps;
+        }
+        cars.forEach((_, i) => {
+          const [lo, hi] = range(i, p);
+          for (let v = lo; v <= hi; v++) {
+            if (v === p[i]) continue;
+            const q = p.slice(); q[i] = v;
+            const k = key(q);
+            if (!prev.has(k)) { prev.set(k, { from: key(p), move: [i, v] }); next.push(q); }
+          }
+        });
+      }
+      queue = next;
+    }
+    return null;
+  }
+
+  function clearHint() {
+    lot.querySelectorAll('.ghost').forEach(e => e.remove());
+    els.forEach(e => e.classList.remove('hinted'));
+  }
+
+  $('hintBtn').onclick = () => {
+    clearHint();
+    const steps = solveFrom(pos);
+    if (!steps || !steps.length) return;
+    const [i, v] = steps[0], car = cars[i], u = 100 / N;
+    const g = document.createElement('div');
+    g.className = 'ghost';
+    g.style.left = (car.h ? v : car.fixed) * u + '%';
+    g.style.top = (car.h ? car.fixed : v) * u + '%';
+    g.style.width = (car.h ? car.len : 1) * u + '%';
+    g.style.height = (car.h ? 1 : car.len) * u + '%';
+    lot.appendChild(g);
+    void els[i].offsetWidth;
+    els[i].classList.add('hinted');
+    setTimeout(() => g.remove(), 3200);
+  };
+
+  $('undoBtn').onclick = () => {
+    if (!history.length || won) return;
+    pos = history.pop();
+    moves--;
+    clearHint();
+    cars.forEach((_, i) => place(i, pos[i]));
+    render();
+  };
+  $('resetBtn').onclick = build;
+  $('replayBtn').onclick = build;
+  $('skipBtn').onclick = () => { if (level < LEVELS.length - 1) { level++; build(); } };
+  $('nextBtn').onclick = () => { if (level < LEVELS.length - 1) { level++; build(); } };
+
+  build();
+})();
+</script>
+</body>
+</html>
