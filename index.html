@@ -285,13 +285,14 @@ canvas.erasing { cursor: cell; }
 (() => {
   // ---------- Tuning ----------
   const WORLD_SHORT = 860;         // world size along the screen's short side (1 unit = 1 m)
-  const REGION = [0.36, 0.5, 0.65, 0.82, 1];   // share of the world open at each stage
-  const EXPAND_EVERY = 180;        // seconds between land openings
+  const REGION = [0.4, 0.52, 0.66, 0.82, 1];   // share of the world open at each stage
+  const EXPAND_EVERY = 150;        // seconds between land openings
+  const PLACE_EVERY = 90;          // a new colour every 90 s until all six are in town, then extra places
   const ROAD_W = 15;
   const KG_PER_M = 1;              // asphalt cost per metre of road
   const START_ASPHALT = 900, PLACE_GRANT = 250;
-  const KG_PER_POINT = 0.3;
-  const BETON_START = 100, BETON_EVERY = 60, BETON_KG = 40;
+  const KG_PER_POINT = 0.15;
+  const BETON_START = 150, BETON_EVERY = 60, BETON_KG = 70;
   // upgrading from 1 to 2 lanes each way costs 1 kg of concrete a metre, from 2 to 3 costs 2
   const LANE_COST = { 1: 1, 2: 2 }, ROAD_WS = [15, 23, 31], LANE_NAMES = ['', 'Yol', 'Bulvar', 'Otoban'];
   const FAST = 1.3;                // speed on boulevards and motorways        // asphalt each arriving car brings, per point it scores
@@ -302,10 +303,10 @@ canvas.erasing { cursor: cell; }
   const JAM_ON = 6, JAM_OFF = 3, WARN_SECONDS = 20;
   // houses grow as their cars arrive; bigger homes send more, and fancier, cars
   const HOUSE_LEVELS = [
-    { name: 'Ev', need: 15, r: 10, every: 1, value: 1 },
-    { name: 'Apartman', need: 40, r: 12, every: 0.8, value: 2 },
-    { name: 'Site', need: 90, r: 14, every: 0.65, value: 4 },
-    { name: 'Gökdelen', need: null, r: 16, every: 0.5, value: 8 },
+    { name: 'Ev', need: 15, r: 9, every: 1, value: 1 },
+    { name: 'Apartman', need: 40, r: 11, every: 0.8, value: 2 },
+    { name: 'Site', need: 90, r: 12.5, every: 0.65, value: 4 },
+    { name: 'Gökdelen', need: null, r: 14, every: 0.5, value: 8 },
   ];
   const PLACE_NEEDS = [50, 150], PLACE_R = [18, 21, 24];
   const PLACES = [
@@ -337,13 +338,13 @@ canvas.erasing { cursor: cell; }
       text: m => `Yan girişlerden ${m.n} araba sok`, base: () => S.sideDoor, value: m => S.sideDoor - m.base },
     rate: { ok: () => S.delivered >= 20, make: t => ({ n: 25 + 10 * t, reward: 60 + 20 * t, unit: 'beton' }),
       text: m => `1 dakika içinde ${m.n} araba ulaştır`, base: () => 0, value: () => S.arrivals.filter(x => S.t - x <= 60).length },
-    variety: { ok: () => new Set(S.places.map(p => p.color)).size >= 3, make: t => ({ lvl: t < 4 ? 1 : 2, n: 3, reward: 400 + 60 * t }),
+    variety: { ok: () => new Set(S.places.map(p => p.color)).size >= 3, make: t => ({ lvl: t < 4 ? 1 : 2, n: 3, reward: 100 + 25 * t, unit: 'beton' }),
       text: m => `3 farklı renkte ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`, base: () => 0,
       value: m => new Set(S.houses.filter(h => h.level >= m.lvl).map(h => h.color)).size },
     biggest: { ok: () => S.places.some(p => p.level < 2), make: t => ({ n: PLACE_NEEDS[1], reward: 500 + 80 * t }),
       text: () => 'Bir mekanı en büyük boyutuna ulaştır', base: () => S.places.filter(p => p.level >= 2).length,
       value: m => S.places.filter(p => p.level >= 2).length > m.base ? m.n : Math.max(0, ...S.places.filter(p => p.level < 2).map(p => p.got)) },
-    lean: { ok: () => S.houses.length - linkedHouses() >= 2, make: t => ({ n: 2 + Math.floor(t / 3), limit: 250 + 50 * Math.floor(t / 3), reward: 250 + 50 * t }),
+    lean: { ok: () => S.houses.length - linkedHouses() >= 2, make: t => ({ n: 2 + Math.floor(t / 3), limit: 250 + 50 * Math.floor(t / 3), reward: 70 + 20 * t, unit: 'beton' }),
       text: m => `En çok ${m.limit} m yeni yolla ${m.n} ev daha bağla`, base: () => ({ linked: linkedHouses(), len: roadLength() }),
       value: m => linkedHouses() - m.base.linked,
       over: m => roadLength() - m.base.len > m.limit,     // too much road: the attempt starts again
@@ -585,7 +586,7 @@ canvas.erasing { cursor: cell; }
       t: 0, asphalt: START_ASPHALT, beton: BETON_START, nextBeton: BETON_EVERY, score: 0, delivered: 0,
       nodes: new Map(), edges: new Map(), nid: 1, eid: 1,
       houses: [], places: [], cars: [],
-      nextHouse: 14, nextPlace: 55, nextExpand: EXPAND_EVERY, stage: 0,
+      nextHouse: 14, nextPlace: PLACE_EVERY, nextExpand: EXPAND_EVERY, stage: 0,
       history: [],                // recent roads and upgrades { kind, ids }, newest last, for undo
       missions: [], mDone: 0, lastKind: null, bridged: 0, sideDoor: 0, arrivals: [], chance: true, lost: null,
     };
@@ -725,7 +726,7 @@ canvas.erasing { cursor: cell; }
 
   // ---------- Buildings ----------
   function buildings() { return [...S.houses, ...S.places]; }
-  function freeSpot(r, near, dMin = 95, dMax = 210) {
+  function freeSpot(r, near, dMin = 120, dMax = 260, gap = 70) {
     const R = S.region, margin = 26 + r;
     for (let tries = 0; tries < 400; tries++) {
       let x, y;
@@ -735,7 +736,7 @@ canvas.erasing { cursor: cell; }
       } else { x = rand(R.x + margin, R.x + R.w - margin); y = rand(R.y + margin, R.y + R.h - margin); }
       if (x < R.x + margin || y < R.y + margin || x > R.x + R.w - margin || y > R.y + R.h - margin) continue;
       const p = { x, y };
-      if (buildings().some(b => dist(b, p) < b.r + r + 46)) continue;
+      if (buildings().some(b => dist(b, p) < b.r + r + gap)) continue;
       if (blocked(p, r + 12) || inRiver(p, r + 16)) continue;
       let clear = true;
       for (const e of S.edges.values()) {
@@ -754,17 +755,18 @@ canvas.erasing { cursor: cell; }
     }
     return null;
   }
-  // The colour whose homes have the most demand per place gets a second place once it is busy;
-  // otherwise a colour the town does not have yet.
+  // New colours come first, in order; once all six are in town, the colour whose homes have the
+  // most demand per place gets another place.
   function nextPlaceDef() {
     const used = new Set(S.places.map(p => p.color));
-    let busiest = null, load = 0;
+    const fresh = PLACES.find(d => !used.has(d.color));
+    if (fresh) return fresh;
+    let busiest = null, load = -1;
     for (const c of used) {
       const l = S.houses.filter(h => h.color === c).reduce((sum, h) => sum + h.level + 1, 0) / S.places.filter(p => p.color === c).length;
       if (l > load) { load = l; busiest = c; }
     }
-    const fresh = PLACES.find(d => !used.has(d.color));
-    return busiest && (load >= 6 || !fresh) ? PLACES.find(d => d.color === busiest) : fresh;
+    return PLACES.find(d => d.color === busiest);
   }
   function addPlace(near, dMin, dMax) {
     const def = nextPlaceDef();
@@ -774,11 +776,12 @@ canvas.erasing { cursor: cell; }
       near = homes[Math.floor(Math.random() * homes.length)];
     }
     // leave room for the building to grow to its biggest size
-    const spot = freeSpot(PLACE_R[2], near, dMin, dMax) || (near && freeSpot(PLACE_R[2]));
+    // when the open land is crowded, settle for a little less elbow room rather than skip the place
+    const spot = freeSpot(PLACE_R[2], near, dMin, dMax) || freeSpot(PLACE_R[2]) || freeSpot(PLACE_R[2], null, 0, 0, 45);
     if (!spot) return null;
     const ent = { x: spot.x + spot.dir[0] * (PLACE_R[0] + 11), y: spot.y + spot.dir[1] * (PLACE_R[0] + 11) };
     const e = addNode(ent.x, ent.y, true);
-    const p = { kind: 'place', def, name: def.names[0], color: def.color, x: spot.x, y: spot.y, r: PLACE_R[0], level: 0, got: 0, dir: spot.dir, entrances: [e.id], sides: [spot.dir] };
+    const p = { kind: 'place', def, shownAt: -1e9, name: def.names[0], color: def.color, x: spot.x, y: spot.y, r: PLACE_R[0], level: 0, got: 0, dir: spot.dir, entrances: [e.id], sides: [spot.dir] };
     S.places.push(p);
     return p;
   }
@@ -798,13 +801,23 @@ canvas.erasing { cursor: cell; }
   }
   const doors = b => b.entrances || [b.entrance];
   function addHouse(color, near) {
-    const spot = freeSpot(HOUSE_LEVELS[3].r, near);
+    // near its place if there is room, otherwise anywhere on open land
+    const spot = freeSpot(HOUSE_LEVELS[3].r, near) || freeSpot(HOUSE_LEVELS[3].r) || freeSpot(HOUSE_LEVELS[3].r, null, 0, 0, 45);
     if (!spot) return null;
     const r = HOUSE_LEVELS[0].r;
     const e = addNode(spot.x + spot.dir[0] * (r + 11), spot.y + spot.dir[1] * (r + 11), true);
     const h = { kind: 'house', seed: Math.random(), color, x: spot.x, y: spot.y, r, level: 0, got: 0, dir: spot.dir, entrance: e.id, waiting: 0, trip: rand(3, 7), cool: 0, warn: null };
     S.houses.push(h);
     return h;
+  }
+  function openLand() {
+    if (S.stage >= REGION.length - 1) return;
+    S.stage++;
+    S.nextExpand = S.t + EXPAND_EVERY;
+    S.region = regionRect(S.stage);
+    fitView(S.region, true);
+    Sound.place();
+    toast('Yeni arazi açıldı');
   }
   function growTown() {
     if (S.t >= S.nextBeton) {
@@ -813,24 +826,23 @@ canvas.erasing { cursor: cell; }
       bump('betonBox');
       Sound.levelUp();
     }
-    if (S.stage < REGION.length - 1 && S.t >= S.nextExpand) {
-      S.stage++;
-      S.nextExpand += EXPAND_EVERY;
-      S.region = regionRect(S.stage);
-      fitView(S.region, true);
-      Sound.place();
-      toast('Yeni arazi açıldı');
-    }
+    if (S.t >= S.nextExpand) openLand();
     if (S.t >= S.nextPlace) {
-      S.nextPlace = S.t + 70;
+      S.nextPlace = S.t + PLACE_EVERY;
       const p = addPlace();
       if (p) {
         S.asphalt += PLACE_GRANT;
+        p.shownAt = performance.now();
         bump();
         Sound.place();
         Sound.asphalt();
         toast(`Yeni mekan: ${p.name}  +${PLACE_GRANT} kg asfalt`);
-        if (!S.houses.some(h => h.color === p.color)) addHouse(p.color, p);
+        // a new colour always arrives with two homes to feed it
+        if (!S.houses.some(h => h.color === p.color)) { addHouse(p.color, p); addHouse(p.color, p); }
+      } else {
+        // no room for it: open the next stretch of land now and try again in a moment
+        openLand();
+        S.nextPlace = S.t + 2;
       }
     }
     if (S.t >= S.nextHouse) {
@@ -840,7 +852,7 @@ canvas.erasing { cursor: cell; }
       for (const p of S.places) { tally[p.color] = tally[p.color] || { places: 0, houses: 0 }; tally[p.color].places++; }
       for (const h of S.houses) if (tally[h.color]) tally[h.color].houses++;
       const pick = +Object.entries(tally)
-        .map(([c, v]) => ({ c, k: v.houses / v.places + rand(0, 0.8) }))
+        .map(([c, v]) => ({ c, k: v.houses / v.places + rand(0, 0.3) }))
         .sort((a, b) => a.k - b.k)[0].c;
       const targets = S.places.filter(p => p.color === pick);
       if (addHouse(pick, targets[Math.floor(Math.random() * targets.length)])) Sound.house();
@@ -1065,6 +1077,7 @@ canvas.erasing { cursor: cell; }
   const roadLength = () => [...S.edges.values()].reduce((sum, e) => sum + e.len, 0);
   function newMission(kind) {
     const K = MISSION_KINDS[kind], m = { kind, ...K.make(Math.floor(S.mDone / 3)) };
+    if (!m.unit) m.reward = Math.round(m.reward * 0.7 / 10) * 10;       // asphalt rewards are kept lean
     m.base = K.base(m);
     return m;
   }
@@ -1180,14 +1193,14 @@ canvas.erasing { cursor: cell; }
 
   function strokeStart(p) {
     const an = anchorAt(p, pxToWorld(26));
-    stroke = { pts: [an ? { x: an.x, y: an.y } : p], start: an, cost: 0, out: false, bad: false, end: null, cursor: p };
+    stroke = { pts: [{ ...(an ? { x: an.x, y: an.y } : p), c: 0 }], start: an, cost: 0, out: false, bad: false, end: null, cursor: p, run: 0, runAt: 0, lock: false };
     Sound.drawStart();
   }
   function strokeMove(p) {
     if (!stroke.out) Sound.drawMove(dist(stroke.cursor, p) * cam.z);
     stroke.cursor = p;
     if (stroke.out) return;
-    stroke.bad = false;
+    stroke.bad = stroke.near = false;
     let last = stroke.pts[stroke.pts.length - 1];
     let d = dist(last, p);
     while (d >= 4) {
@@ -1196,10 +1209,42 @@ canvas.erasing { cursor: cell; }
       const kg = step * KG_PER_M * (inRiver(q) ? BRIDGE_COST : 1);
       if (stroke.cost + kg > S.asphalt) { stroke.out = true; Sound.drawStop(false); Sound.denied(); break; }
       if (!inRegion(q) || hitsBuilding(q) || blocked(q, 6)) { stroke.bad = true; break; }   // wait until the finger comes back around
-      stroke.pts.push(q); stroke.cost += kg; last = q; d = dist(last, p);
+      // running alongside another road for 25 m is refused: the stretch is taken back and stays red
+      if (tooClose(q, last)) {
+        if (!stroke.run) stroke.runAt = stroke.pts.length;
+        stroke.run += step;
+        if (stroke.lock || stroke.run >= 25) {
+          stroke.pts.length = stroke.runAt;
+          stroke.cost = stroke.pts[stroke.pts.length - 1].c;
+          stroke.run = 0; stroke.lock = stroke.bad = stroke.near = true;
+          break;
+        }
+      } else { stroke.run = 0; stroke.lock = false; }
+      stroke.cost += kg;
+      stroke.pts.push({ x: q.x, y: q.y, c: stroke.cost }); last = q; d = dist(last, p);
     }
     const an = anchorAt(stroke.pts[stroke.pts.length - 1], pxToWorld(26));
     stroke.end = an && !(stroke.start && an.node && stroke.start.node === an.node) && stroke.pts.length > 2 ? an : null;
+  }
+  // Is this bit of a new road running right alongside an existing one? Crossing or joining is fine.
+  function tooClose(q, from) {
+    if (dist(q, stroke.pts[0]) < 30) return false;            // just leaving a road or an entrance
+    for (const b of buildings()) for (const id of doors(b)) if (dist(S.nodes.get(id), q) < 30) return false;   // arriving at a building
+    const dx = q.x - from.x, dy = q.y - from.y, dl = Math.hypot(dx, dy) || 1;
+    for (const e of S.edges.values()) {
+      const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
+      if (nearestOnSeg(q, a, b).d >= ROAD_WS[e.lanes - 1] / 2 + 13) continue;
+      // judge the road's direction over a few pieces: junctions leave short kinked bits
+      const a2 = beyond(a, b), b2 = beyond(b, a), rx = b2.x - a2.x, ry = b2.y - a2.y;
+      if (Math.abs(dx * rx + dy * ry) / (dl * (Math.hypot(rx, ry) || 1)) > 0.9) return true;   // within ~25°
+    }
+    return false;
+  }
+  // the next node along a plain stretch of road past `n`, coming from `from` (n itself at a junction or end)
+  function beyond(n, from) {
+    if (n.edges.size !== 2) return n;
+    for (const id of n.edges) { const e = S.edges.get(id), o = e.a === n.id ? e.b : e.a; if (o !== from.id) return S.nodes.get(o); }
+    return n;
   }
   function smooth(pts) {
     let out = pts;
@@ -1221,10 +1266,12 @@ canvas.erasing { cursor: cell; }
     const s = stroke; stroke = null;
     if (!s) return;
     const pts = s.pts.slice();
-    if (s.end) pts.push({ x: s.end.x, y: s.end.y });
+    // a stroke still pressed against a parallel road does not snap onto it
+    if (s.end && !s.lock) pts.push({ x: s.end.x, y: s.end.y });
     let total = 0;
     for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
-    if (pts.length < 2 || total < 10) { Sound.drawStop(false); return; }
+    // too short, or a stub left by a road that was stopped for running alongside another
+    if (pts.length < 2 || total < 10 || (s.near && total < 40)) { Sound.drawStop(false); return; }
     const line = smooth(pts);
     let cost = 0;
     for (let i = 1; i < line.length; i++) {
@@ -1473,8 +1520,9 @@ canvas.erasing { cursor: cell; }
   const short = n => n < 1000 ? String(Math.floor(n)) : new Intl.NumberFormat('tr', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
   const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   function updateHud() {
-    $('asphalt').innerHTML = `${short(S.asphalt)}<em>kg</em>`;
-    $('beton').innerHTML = `${short(S.beton)}<em>kg</em>`;
+    const kg = n => n < 1000 ? `${short(n)}<em>kg</em>` : short(n);      // no room for the unit once shortened
+    $('asphalt').innerHTML = kg(S.asphalt);
+    $('beton').innerHTML = kg(S.beton);
     $('score').textContent = short(S.score);
     $('recordLine').textContent = `Rekor ${record ? short(record.score) : '–'}`;
     $('clock').textContent = fmtTime(S.t);
@@ -1550,17 +1598,28 @@ canvas.erasing { cursor: cell; }
       i ? path.lineTo(q.x + nx * d, q.y + ny * d) : path.moveTo(q.x + nx * d, q.y + ny * d);
     });
   }
+  const chainLength = pts => pts.reduce((sum, q, i) => i ? sum + dist(pts[i - 1], q) : 0, 0);
+  // the part of a polyline that starts `a` metres in and ends `b` metres before its end; null if nothing is left
+  function trimLine(pts, a, b) {
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
+    if (total - a - b < 4) return null;
+    const at = d => {
+      for (let i = 1, run = 0; i < pts.length; i++) {
+        const l = dist(pts[i - 1], pts[i]);
+        if (run + l >= d) { const t = (d - run) / (l || 1); return { i, x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t }; }
+        run += l;
+      }
+      return { i: pts.length - 1, ...pts[pts.length - 1] };
+    };
+    const s = at(a), e = at(total - b);
+    return [{ x: s.x, y: s.y }, ...pts.slice(s.i, e.i), { x: e.x, y: e.y }];
+  }
   const laneW = lanes => (ROAD_WS[lanes - 1] / 2 - 1) / lanes;
   function rrect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  }
-  // small "12/40" counters with a halo so they read on any ground
-  function label(text, x, y, size, color) {
-    ctx.font = `700 ${size}px "Atkinson Hyperlegible", system-ui, sans-serif`;
-    ctx.lineWidth = 3; ctx.strokeStyle = colors.ground; ctx.strokeText(text, x, y);
-    ctx.fillStyle = color || colors.fg; ctx.fillText(text, x, y);
   }
   const SUN = { x: 0.8, y: 1.1 };   // shadows fall down and to the right, scaled by height
   // the footprint swept towards the sun's shadow side, so it stays attached to the building
@@ -1755,8 +1814,22 @@ canvas.erasing { cursor: cell; }
     }
     if (p.level >= 2) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 2.2; rrect(x0 - 2, y0 - 2, size + 4, size + 4, 7); ctx.stroke(); }
     if (dark > 0.3) { ctx.globalAlpha = dark; ctx.fillStyle = colors.lamp; ctx.beginPath(); ctx.arc(x0 + 3, y0 + 3, 1.6, 0, 7); ctx.arc(x0 + size - 3, y0 + 3, 1.6, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
-    const counter = p.level < PLACE_NEEDS.length ? `  ${p.got}/${PLACE_NEEDS[p.level]}` : '';
-    label(p.name + counter, p.x, p.dir[1] === -1 ? p.y + s + 9 : p.y - s - 8, 10);
+    roofSign(x0, y0, size, p.name, p.def.names[0], p.level < PLACE_NEEDS.length ? `${p.got}/${PLACE_NEEDS[p.level]}` : '');
+  }
+  // A dark strip across the top of a roof carrying the name and/or the growth counter.
+  function roofSign(x0, y0, size, name, shortName, counter) {
+    const lines = [name, counter].filter(Boolean), bandH = lines.length === 2 ? 12 : 7.5;
+    ctx.fillStyle = 'rgba(18,22,20,.68)'; rrect(x0 + 1.5, y0 + 1.5, size - 3, bandH, 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    const fit = (text, size0) => {
+      let fs = size0;
+      do { ctx.font = `700 ${fs}px "Atkinson Hyperlegible", system-ui, sans-serif`; fs -= 0.3; } while (ctx.measureText(text).width > size - 6 && fs > 4.2);
+      return ctx.measureText(text).width > size - 6 && shortName ? (fit(shortName, size0), shortName) : text;
+    };
+    if (lines.length === 2) {
+      ctx.fillText(fit(name, 6), x0 + size / 2, y0 + 5.2);
+      ctx.font = '700 4.6px "Atkinson Hyperlegible", system-ui, sans-serif'; ctx.fillText(counter, x0 + size / 2, y0 + 10.3);
+    } else ctx.fillText(fit(lines[0], 5.6), x0 + size / 2, y0 + 5.4);
   }
   // Homes seen from above: a pitched roof, then flat roofs that grow taller and busier.
   function drawHome(h, dark) {
@@ -1796,6 +1869,8 @@ canvas.erasing { cursor: cell; }
       ctx.strokeStyle = '#3b403d'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(h.x - s * 0.2, h.y + s * 0.2); ctx.lineTo(h.x - s * 0.2, h.y - s * 0.25); ctx.stroke();   // antenna
       lights.push([x0 + 3, y0 + 3], [x0 + size - 3, y0 + 3], [x0 + 3, y0 + size - 3], [x0 + size - 3, y0 + size - 3]);
     }
+    const need = HOUSE_LEVELS[L].need;
+    if (need) roofSign(x0, y0, size, '', '', `${h.got}/${need}`);
     if (dark > 0.3) {
       ctx.fillStyle = colors.lamp; ctx.globalAlpha = dark;
       for (const [lx, ly] of lights) { ctx.beginPath(); ctx.arc(lx, ly, 1.5, 0, 7); ctx.fill(); }
@@ -1842,6 +1917,9 @@ canvas.erasing { cursor: cell; }
     ctx.setLineDash([5, 28]); ctx.lineDashOffset = -now / 90;
     ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1.2; ctx.stroke(ripples);
     ctx.restore();
+    // night darkens the land like a dark theme; roads, cars and buildings stay as they are
+    const dark = darkness(S.t);
+    if (dark > 0) { ctx.globalAlpha = 0.42 * dark; ctx.fillStyle = colors.night; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
 
     // driveways from each building to its entrance
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1880,31 +1958,41 @@ canvas.erasing { cursor: cell; }
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.globalAlpha = 1;
+    // junctions are one clean patch of asphalt
+    const junctionR = n => Math.max(...[...n.edges].map(id => ROAD_WS[S.edges.get(id).lanes - 1])) / 2;
+    ctx.fillStyle = colors.road;
+    for (const n of S.nodes.values()) if (isJunction(n)) { ctx.beginPath(); ctx.arc(n.x, n.y, junctionR(n) + 1, 0, 7); ctx.fill(); }
     // markings along whole stretches so dashes flow round curves: a dashed centre on plain roads,
-    // a solid centre with dashed lane lines on boulevards and motorways; street lamps every ~45 m
-    const dashed = new Path2D(), solid = new Path2D(), lamps = [];
+    // a solid centre with dashed lane lines on boulevards and motorways. They stop short of
+    // junctions, where a stop line crosses the road.
+    const dashed = new Path2D(), solid = new Path2D(), stops = new Path2D();
     for (const chain of roadChains()) {
-      if (chain.lanes === 1) offsetLine(dashed, chain, 0);
-      else {
-        offsetLine(solid, chain, 0);
-        for (let k = 1; k < chain.lanes; k++) { offsetLine(dashed, chain, k * laneW(chain.lanes)); offsetLine(dashed, chain, -k * laneW(chain.lanes)); }
+      const cut = n => isJunction(n) ? junctionR(n) + 3 : 0;
+      // a piece between two nearby junctions keeps its centre line but gets no stop lines;
+      // a very short one is just part of one big crossing
+      const between = isJunction(chain[0]) && isJunction(chain[chain.length - 1]) && chainLength(chain) < 40;
+      if (between && chainLength(chain) < 15) {
+        ctx.strokeStyle = colors.road; ctx.lineWidth = ROAD_WS[chain.lanes - 1] + 4; ctx.lineCap = 'round';
+        ctx.beginPath(); chain.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+        continue;
       }
-      let run = 20, side = 1;
-      for (let i = 1; i < chain.length; i++) {
-        const a = chain[i - 1], b = chain[i], l = dist(a, b);
-        if ((run += l) < 45) continue;
-        run = 0; side = -side;
-        const d = (ROAD_WS[chain.lanes - 1] / 2 + 4) * side, nx = -(b.y - a.y) / (l || 1), ny = (b.x - a.x) / (l || 1);
-        if (!inRiver(b, 2)) lamps.push([b.x + nx * d, b.y + ny * d]);
+      const line = trimLine(chain, cut(chain[0]), cut(chain[chain.length - 1]));
+      if (!line) continue;
+      const hw = ROAD_WS[chain.lanes - 1] / 2 - 1;
+      for (const [end, on] of [[0, cut(chain[0])], [line.length - 1, cut(chain[chain.length - 1])]]) {
+        if (!on || between) continue;
+        const a = line[end], b = line[end ? end - 1 : 1], l = dist(a, b) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
+        stops.moveTo(a.x + nx * hw, a.y + ny * hw); stops.lineTo(a.x - nx * hw, a.y - ny * hw);
       }
+      if (chain.lanes === 1) { offsetLine(dashed, line, 0); continue; }
+      offsetLine(solid, line, 0);
+      for (let k = 1; k < chain.lanes; k++) { offsetLine(dashed, line, k * laneW(chain.lanes)); offsetLine(dashed, line, -k * laneW(chain.lanes)); }
     }
     ctx.save();
     ctx.lineCap = 'butt'; ctx.strokeStyle = 'rgba(255,255,255,.85)';
-    ctx.lineWidth = 1.8; ctx.stroke(solid);
+    ctx.lineWidth = 1.8; ctx.stroke(solid); ctx.stroke(stops);
     ctx.setLineDash([7, 8]); ctx.lineWidth = 1.4; ctx.stroke(dashed);
     ctx.restore();
-    ctx.fillStyle = '#5b605c';
-    for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 1.3, 0, 7); ctx.fill(); }
 
     // the road being drawn
     if (stroke && stroke.pts.length > 1) {
@@ -1918,7 +2006,6 @@ canvas.erasing { cursor: cell; }
     }
 
     // cars keep to their lane on the right
-    const placed = [];
     for (const car of S.cars) {
       const a = S.nodes.get(car.path[car.i]), b = S.nodes.get(car.path[car.i + 1]);
       if (!a || !b) continue;
@@ -1927,7 +2014,6 @@ canvas.erasing { cursor: cell; }
       const lanes = edgeBetween(car.path[car.i], car.path[car.i + 1])?.lanes || 1, off = laneW(lanes) * (Math.min(car.lane, lanes - 1) + 0.5);
       const x = a.x + (b.x - a.x) * t - Math.sin(ang) * off, y = a.y + (b.y - a.y) * t + Math.cos(ang) * off;
       const cl = [10, 11, 12, 12.5][car.level];
-      placed.push({ x, y, ang, cl });
       drawCar(x, y, ang, cl, colors['c' + car.color], car.level);
     }
 
@@ -1938,26 +2024,6 @@ canvas.erasing { cursor: cell; }
     ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = colors.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5 / cam.z * 1.5;
     ctx.strokeRect(R.x, R.y, R.w, R.h); ctx.restore();
 
-    // night: tint the land, then light the lamps, headlights and homes; buildings stay readable
-    const dark = darkness(S.t);
-    if (dark > 0) {
-      ctx.globalAlpha = 0.5 * dark; ctx.fillStyle = colors.night; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = colors.lamp;
-      ctx.globalAlpha = 0.16 * dark;
-      for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 10, 0, 7); ctx.fill(); }
-      ctx.globalAlpha = dark;
-      for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 1.4, 0, 7); ctx.fill(); }
-      for (const c of placed) {
-        ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.ang);
-        const f = c.cl / 2;
-        ctx.globalAlpha = 0.28 * dark; ctx.beginPath(); ctx.moveTo(f, -2.5); ctx.lineTo(f + 12, -6); ctx.lineTo(f + 12, 6); ctx.lineTo(f, 2.5); ctx.fill();
-        ctx.restore();
-      }
-      ctx.globalAlpha = 0.22 * dark;
-      for (const b of buildings()) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 9, 0, 7); ctx.fill(); }
-      ctx.globalAlpha = 1;
-    }
-
     // entrances: a pulsing ring until something is connected
     const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     for (const b of buildings()) for (const id of doors(b)) {
@@ -1967,6 +2033,19 @@ canvas.erasing { cursor: cell; }
       ctx.beginPath(); ctx.arc(en.x, en.y, linked ? 3.5 : 5 + pulse * 1.5, 0, 7); ctx.fill(); ctx.stroke();
     }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // a new place pulses with rings in its colour for five seconds
+    for (const p of S.places) {
+      const age = (now - p.shownAt) / 1000;
+      if (age > 5) continue;
+      ctx.strokeStyle = ctx.fillStyle = colors['c' + p.color];
+      ctx.globalAlpha = 0.18 * (1 - age / 5); ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2.2, 0, 7); ctx.fill();
+      for (const k of [0, 0.5]) {
+        const f = (age * 0.8 + k) % 1;
+        ctx.globalAlpha = (1 - f) * (1 - age / 5) * 0.9; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 8 + f * 46, 0, 7); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
     for (const p of S.places) drawPlace(p, dark);
     for (const h of S.houses) {
       const s = h.r;
@@ -1984,24 +2063,32 @@ canvas.erasing { cursor: cell; }
         ctx.fillStyle = q >= JAM_ON - 1 ? colors.warn : colors.fg;
         ctx.beginPath(); ctx.arc(h.x - (k - 1) * 3 + q * 6, h.y - s - 6, 2.2, 0, 7); ctx.fill();
       }
-      // cars delivered towards the next size, on the side away from the entrance
-      const need = HOUSE_LEVELS[h.level].need;
-      if (need) {
-        const up = h.dir[1] === 1;
-        label(`${h.got}/${need}`, h.x - h.dir[0] * (s + 13), up ? h.y - s - 15 : h.y - h.dir[1] * (s + 9), 8);
-      }
     }
 
     // asphalt tag above the finger while drawing, tool ring while upgrading or bulldozing
     if (stroke && stroke.cursor) {
       const c = stroke.cursor;
-      const text = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.cost)} kg`;
+      const text = stroke.out ? 'Asfalt bitti' : stroke.near ? 'Yollar çok yakın' : `${Math.ceil(stroke.cost)} kg`;
       ctx.font = `700 ${12 / Math.min(1.6, cam.z) * 1.2}px "Atkinson Hyperlegible", system-ui, sans-serif`;
       const w = ctx.measureText(text).width + 14, hgt = 20 / Math.min(1.6, cam.z) * 1.2;
       const tx = c.x, ty = c.y - 50 / cam.z;
-      ctx.fillStyle = stroke.out ? colors.warn : colors.fg; rrect(tx - w / 2, ty - hgt / 2, w, hgt, hgt / 2); ctx.fill();
-      ctx.fillStyle = stroke.out ? '#fff' : colors.ground; ctx.fillText(text, tx, ty + 1);
+      const alarm = stroke.out || stroke.near;
+      ctx.fillStyle = alarm ? colors.warn : colors.fg; rrect(tx - w / 2, ty - hgt / 2, w, hgt, hgt / 2); ctx.fill();
+      ctx.fillStyle = alarm ? '#fff' : colors.ground; ctx.fillText(text, tx, ty + 1);
     }
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const p of S.places) {
+      if (now - p.shownAt > 5000) continue;
+      const sx = (p.x - cam.x) * cam.z, sy = (p.y - cam.y) * cam.z, m = 26;
+      if (sx > m && sy > m && sx < cssW - m && sy < cssH - m) continue;
+      const cx = Math.min(cssW - m, Math.max(m, sx)), cy = Math.min(cssH - m, Math.max(m, sy)), ang = Math.atan2(sy - cy, sx - cx);
+      ctx.translate(cx, cy); ctx.rotate(ang);
+      ctx.fillStyle = colors['c' + p.color]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -10); ctx.lineTo(-4, 0); ctx.lineTo(-8, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    ctx.restore();
     if (mode !== 'draw' && cursor && running) {
       ctx.strokeStyle = mode === 'up' ? colors.accent : colors.warn; ctx.lineWidth = 2 / cam.z; ctx.setLineDash([4 / cam.z, 3 / cam.z]);
       ctx.beginPath(); ctx.arc(cursor.x, cursor.y, pxToWorld(mode === 'up' ? 16 : 18), 0, 7); ctx.stroke(); ctx.setLineDash([]);
