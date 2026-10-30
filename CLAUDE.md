@@ -4,3 +4,4 @@
 - Kod yazmadan, dosya oluşturmadan veya bir şey yayınlamadan önce kısa bir plan öner ve kullanıcının onayını bekle.
 - Kullanıcının emin olmadığı konularda (ör. harita tasarımı) kendi kafana göre karar verme; seçenekleri sun ve kullanıcıya seçtir.
 - Kullanıcıyla Türkçe konuş.
+- GitHub'a commit/push yalnızca kullanıcı açıkça isteyince yapılır. Oynama linki (artifact) her değişiklikten sonra güncellenmeye devam eder.

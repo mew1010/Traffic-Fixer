@@ -1,5 +1,5 @@
 // Smoke test: node test/smoke.js (needs the playwright package and its Chromium).
-// Name entry, a bridge over the river, undo, pinch zoom, stop-time, missions and the second chance.
+// Name entry, a bridge over the river, boulevard upgrade, undo, pinch zoom, right-drag, stop-time, missions and the second chance.
 const assert = require('assert');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -52,10 +52,21 @@ const { chromium } = require('playwright');
   assert(after.bridges > 0, 'road over the river should become a bridge');
   assert(spent > after.len * 1.2, `bridge should cost extra: spent ${spent} kg for ${after.len.toFixed(0)} m`);
 
+  // upgrading along the road makes it a boulevard, paid in concrete; undo takes it back
+  await page.tap('#upBtn');
+  const beton0 = await T(() => window.__trafik.S.beton);
+  await touchLine(...line);
+  const up = await T(() => ({ beton: window.__trafik.S.beton, wide: [...window.__trafik.S.edges.values()].filter(e => e.lanes === 2).length }));
+  assert(up.wide > 0 && up.beton < beton0, 'upgrade should widen the road for concrete: ' + JSON.stringify(up));
+  await page.tap('#undoBtn');
+  const down = await T(() => ({ beton: window.__trafik.S.beton, wide: [...window.__trafik.S.edges.values()].filter(e => e.lanes > 1).length }));
+  assert(down.wide === 0 && Math.abs(down.beton - beton0) < 1, 'undo should take the upgrade back: ' + JSON.stringify(down));
+  await page.tap('#drawBtn');
+
   await page.tap('#undoBtn');
   const undone = await T(() => ({ asphalt: window.__trafik.S.asphalt, edges: window.__trafik.S.edges.size }));
   assert.strictEqual(undone.edges, 0, 'undo should remove the road');
-  assert.strictEqual(undone.asphalt, 900, 'undo should refund the asphalt');
+  assert(Math.abs(undone.asphalt - 900) < 0.01, 'undo should refund the asphalt: ' + undone.asphalt);
 
   // two fingers zoom in and do not draw
   const z0 = await T(() => window.__trafik.cam.z);
@@ -65,6 +76,14 @@ const { chromium } = require('playwright');
   const z1 = await T(() => window.__trafik.cam.z);
   assert(z1 > z0 * 1.5, `pinch should zoom in: ${z0} -> ${z1}`);
   assert.strictEqual(await T(() => window.__trafik.S.edges.size), 0, 'pinch must not draw a road');
+
+  // the right mouse button drags the map
+  const c0 = await T(() => ({ ...window.__trafik.cam }));
+  await page.mouse.move(200, 500); await page.mouse.down({ button: 'right' });
+  await page.mouse.move(120, 440, { steps: 5 }); await page.mouse.up({ button: 'right' });
+  const c1 = await T(() => ({ ...window.__trafik.cam }));
+  assert(c1.x !== c0.x || c1.y !== c0.y, 'right-drag should move the map');
+  assert.strictEqual(await T(() => window.__trafik.S.edges.size), 0, 'right-drag must not draw');
 
   // stop-time freezes the clock but the game keeps running
   await page.tap('#freezeBtn');
@@ -79,14 +98,13 @@ const { chromium } = require('playwright');
   const run = await T(() => {
     const t = window.__trafik; let stage = 0;
     for (let i = 0; i < 400 * 60 && document.querySelector('#over[hidden]'); i++) { t.update(1 / 60); stage = t.S.stage; }
-    return { over: !document.querySelector('#over[hidden]'), stage, t: t.S.t, mission: document.getElementById('mText').textContent };
+    return { over: !document.querySelector('#over[hidden]'), stage, t: t.S.t, mission: document.getElementById('missions').textContent };
   });
   assert(run.over && run.stage >= 0 && run.mission.includes('50 araba'), JSON.stringify(run));
   assert(await page.isVisible('#chanceBtn'), 'first loss offers a second chance');
   await page.tap('#chanceBtn');
-  const resumed = await T(() => ({ over: !document.querySelector('#over[hidden]'), frozen: document.getElementById('stage').classList.contains('frozen'), warns: window.__trafik.S.houses.filter(h => h.warn != null).length }));
-  assert(!resumed.over && resumed.frozen && resumed.warns === 0, JSON.stringify(resumed));
-  await page.tap('#freezeBtn');
+  const resumed = await T(() => ({ over: !document.querySelector('#over[hidden]'), frozen: document.getElementById('stage').classList.contains('frozen'), lostWaiting: window.__trafik.S.lost.waiting }));
+  assert(!resumed.over && !resumed.frozen && resumed.lostWaiting < 3, JSON.stringify(resumed));
   await T(() => { const t = window.__trafik; for (let i = 0; i < 400 * 60 && document.querySelector('#over[hidden]'); i++) t.update(1 / 60); });
   assert(await page.isHidden('#chanceBtn'), 'the second chance is used up');
 

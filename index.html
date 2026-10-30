@@ -35,6 +35,10 @@
   --water: #7fb6d6; --water-edge: #5d93b5;
   --tree: #5f9a4e; --tree-dark: #3f7134; --rock: #a8a59b; --rock-edge: #77746b;
   --bridge: #b9a88a;        /* timber railing under bridge decks */
+  --sand: #d9cd9f;          /* river banks, park paths */
+  --sidewalk: #cfcdc3;
+  --grass-light: #dae6ca; --grass-dark: #bccdaa;
+  --glass: #2b3a48;         /* car windows */
   --night: #0c1633;         /* night tint laid over the map */
   --lamp: #ffd77a;          /* lit windows and headlights */
   --c1: #2f74c0; --c2: #e8862a; --c3: #3c9a4f; --c4: #8a55c4; --c5: #18a3a3; --c6: #d1508f;
@@ -47,7 +51,7 @@
     --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fog: rgba(18, 22, 20, .7); --fg: #e8ebe6; --muted: #9aa59b;
     --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
     --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
-    --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
+    --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e; --sand: #4b4636; --sidewalk: #4d524e; --grass-light: #25302a; --grass-dark: #18201b;
     color-scheme: dark;
   }
 }
@@ -55,7 +59,7 @@
   --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fog: rgba(18, 22, 20, .7); --fg: #e8ebe6; --muted: #9aa59b;
   --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
   --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
-  --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
+  --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e; --sand: #4b4636; --sidewalk: #4d524e; --grass-light: #25302a; --grass-dark: #18201b;
   color-scheme: dark;
 }
 
@@ -74,12 +78,15 @@ button { touch-action: manipulation; }
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
-.hud { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 6px; }
-.gauge { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 4px 10px 5px; min-width: 0; }
-.gauge span { display: block; font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
-.gauge b { display: block; font: 400 1.15rem/1.15 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gauge small { display: block; font-size: .66rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.gauge.asphalt { border-left: 5px solid var(--accent); }
+.hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+/* each gauge: a picture of the thing, its name, its amount */
+.gauge { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 4px 6px; min-width: 0; display: grid; grid-template-columns: 26px 1fr; gap: 5px; align-items: center; }
+.gauge > div { min-width: 0; }
+.ico { width: 26px; height: 26px; display: block; }
+.gauge span { display: block; font-size: .6rem; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.gauge b { display: block; font: 400 .95rem/1.15 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge b em { font: 700 .6rem var(--body); font-style: normal; color: var(--muted); margin-left: 2px; }
+.gauge small { display: block; font-size: .6rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .gauge.bump { animation: bump .6s ease; }
 @keyframes bump { 30% { transform: scale(1.06); background: var(--accent); color: #1d2420; } }
 
@@ -88,17 +95,20 @@ button { touch-action: manipulation; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 canvas.erasing { cursor: cell; }
 
-.mission {
-  position: absolute; top: 10px; left: 10px; z-index: 5; width: min(calc(100% - 80px), 250px); pointer-events: none;
-  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px 8px;
-  display: flex; flex-direction: column; gap: 4px; box-shadow: 0 6px 16px -10px var(--shadow);
+.missions {
+  position: absolute; top: 10px; left: 10px; z-index: 5; width: min(calc(100% - 80px), 240px); pointer-events: none;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 9px;
+  display: flex; flex-direction: column; gap: 7px; box-shadow: 0 6px 16px -10px var(--shadow);
 }
-.m-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
-.m-head b { font: 400 .8rem var(--display); letter-spacing: 0; text-transform: none; background: var(--accent); color: #1d2420; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
-.m-text { font-weight: 700; font-size: .88rem; line-height: 1.25; }
-.m-bar { height: 6px; border-radius: 3px; background: var(--edge); overflow: hidden; }
+.m-row { display: flex; flex-direction: column; gap: 3px; }
+.m-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; font-size: .76rem; font-weight: 700; line-height: 1.2; }
+.m-line span { min-width: 0; }
+.m-line small { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.m-line b { font: 400 .66rem/1.5 var(--display); background: var(--accent); color: #1d2420; border-radius: 4px; padding: 0 5px 0 2px; white-space: nowrap; display: flex; align-items: center; gap: 2px; }
+.m-line b .ico { width: 14px; height: 14px; }
+.m-line b.beton { background: #d4d6cf; }
+.m-bar { height: 4px; border-radius: 2px; background: var(--edge); overflow: hidden; }
 .m-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-.m-count { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .toast {
   position: absolute; left: 50%; bottom: 62px; transform: translateX(-50%); z-index: 4; pointer-events: none;
@@ -113,10 +123,10 @@ canvas.erasing { cursor: cell; }
 }
 .alarm b { font: 400 1.2rem var(--display); font-variant-numeric: tabular-nums; }
 
-.toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.toolbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tool {
-  font: 700 1rem var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
-  border-bottom-width: 3px; border-radius: 10px; padding: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  font: 700 .95rem var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
+  border-bottom-width: 3px; border-radius: 10px; padding: 10px 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
   -webkit-tap-highlight-color: transparent; min-width: 0;
 }
 .tool[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -129,7 +139,7 @@ canvas.erasing { cursor: cell; }
 .tool:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 /* pause, stop-time, speed and undo stack in the map's top-right corner */
 .side { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
-.tool.mini { width: 44px; height: 44px; padding: 0; font: 400 .95rem var(--display); box-shadow: 0 4px 10px -6px var(--shadow); }
+.tool.mini { width: 42px; height: 42px; padding: 0; font: 400 .95rem var(--display); box-shadow: 0 4px 10px -6px var(--shadow); }
 .tool.mini:disabled { opacity: .45; cursor: default; }
 #freezeBtn[aria-pressed="true"] { background: var(--freeze); color: #fff; border-color: var(--freeze); }
 .sound-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -175,20 +185,16 @@ canvas.erasing { cursor: cell; }
 <body>
 <div class="app">
   <div class="hud">
-    <div class="gauge asphalt" id="asphaltBox"><span>Asfalt</span><b id="asphalt">0 kg</b></div>
-    <div class="gauge"><span>Puan</span><b id="score">0</b><small id="recordLine">Rekor –</small></div>
-    <div class="gauge"><span>Süre</span><b id="clock">0:00</b></div>
+    <div class="gauge" id="asphaltBox"><svg class="ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M11 6.5c0-2 2-2 2-4M17 6.5c0-2 2-2 2-4" stroke="#9aa09c" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M2 26C6 14 10 9 16 9s10 5 14 17z" fill="#3b403d"/><path d="M8 19q4-4 8-3.5" stroke="#6b716d" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="2" y="25.5" width="28" height="3.5" rx="1.5" fill="#2a2e2c"/><rect x="7" y="26.6" width="5" height="1.3" fill="#f2c230"/><rect x="18" y="26.6" width="5" height="1.3" fill="#f2c230"/></svg><div><span>Asfalt</span><b id="asphalt">0</b></div></div>
+    <div class="gauge" id="betonBox"><svg class="ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 12l13-5.5L29 12l-13 5.5z" fill="#cfd1ca"/><path d="M3 12v10l13 5.5v-10z" fill="#a5a8a0"/><path d="M29 12v10l-13 5.5v-10z" fill="#878a82"/><path d="M8.5 11.6l3.6-1.5 2.6 1.1-3.6 1.5zM17.3 10.8l3.6-1.5 2.6 1.1-3.6 1.5z" fill="#7a7d75"/></svg><div><span>Beton</span><b id="beton">0</b></div></div>
+    <div class="gauge"><svg class="ico" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l3.9 8.1 8.9 1.2-6.5 6.2 1.6 8.8L16 23.1l-7.9 4.2 1.6-8.8-6.5-6.2 8.9-1.2z" fill="#f2c230" stroke="#c29613" stroke-width="1.4" stroke-linejoin="round"/></svg><div><span>Puan</span><b id="score">0</b><small id="recordLine">Rekor –</small></div></div>
+    <div class="gauge"><svg class="ico" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="#f6f4ec" stroke="#3b403d" stroke-width="2.4"/><path d="M16 9v7l5 3" stroke="#3b403d" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg><div><span>Süre</span><b id="clock">0:00</b></div></div>
   </div>
 
   <div class="stage" id="stage">
     <canvas id="map" aria-label="Şehir haritası. Tek parmakla yol çiz, iki parmakla kaydır ve yakınlaştır."></canvas>
 
-    <div class="mission" id="mission" aria-live="polite">
-      <div class="m-head">Görev <b id="mReward">+0 kg</b></div>
-      <div class="m-text" id="mText"></div>
-      <div class="m-bar"><i id="mBar"></i></div>
-      <div class="m-count" id="mCount"></div>
-    </div>
+    <div class="missions" id="missions" aria-live="polite"></div>
 
     <div class="side">
       <button class="tool mini" id="pauseBtn" type="button" aria-label="Duraklat ve ses ayarları">
@@ -215,6 +221,8 @@ canvas.erasing { cursor: cell; }
           <li>İki parmakla haritayı kaydır ve yakınlaştır. Harita zamanla genişler.</li>
           <li>Nehirden geçen yol köprü olur, üç kat asfalt harcar. Ağaç, kaya ve gölden yol geçmez.</li>
           <li>Asfalt görevlerden ve ulaşan arabalardan gelir. Evler ve mekanlar araba ulaştırdıkça büyür.</li>
+          <li>Yükselt ile yolun üstünden geçince yol bulvara (4 şerit), bir daha geçince otobana (6 şerit) döner. Beton harcar, arabalar orada daha hızlı gider.</li>
+          <li>Buldozer dokunduğu yolu kaldırır, asfaltı ve betonu geri verir.</li>
           <li>Kar tanesi zamanı durdurur, o sırada yol yapmaya devam edebilirsin.</li>
           <li>Bir evde araba birikirse 20 saniyen var.</li>
         </ul>
@@ -229,6 +237,7 @@ canvas.erasing { cursor: cell; }
     <div class="overlay" id="paused" hidden>
       <div class="card">
         <h2>Duraklatıldı</h2>
+        <p class="hint" id="fpsLine"></p>
         <div class="sound-row">
           <button class="tool sound" id="musicBtn" type="button" aria-pressed="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/><path class="off" d="M3 3l18 18"/></svg>Müzik
@@ -253,7 +262,7 @@ canvas.erasing { cursor: cell; }
           <div><span>Rekor</span><b class="small" id="overBest">–</b></div>
         </div>
         <button class="btn" id="chanceBtn" type="button">Bir şans daha</button>
-        <p class="hint" id="chanceHint">O evde biriken arabalar silinir, oyun zaman durmuş halde devam eder.</p>
+        <p class="hint" id="chanceHint">O evde biriken arabalar silinir ve oyun kaldığı yerden devam eder.</p>
         <button class="btn ghost" id="againBtn" type="button">Yeniden başla</button>
       </div>
     </div>
@@ -263,8 +272,11 @@ canvas.erasing { cursor: cell; }
     <button class="tool" id="drawBtn" type="button" aria-pressed="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 19c3-9 7 1 10-7s4-6 6-7"/></svg>Yol
     </button>
+    <button class="tool" id="upBtn" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21l2.5-18M16 21L13.5 3"/><path d="M2 12h4M4 10l-2 2 2 2M22 12h-4M20 10l2 2-2 2"/></svg>Yükselt
+    </button>
     <button class="tool" id="eraseBtn" type="button" aria-pressed="false">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H7z"/><path d="M9 11l5 5"/></svg>Silgi
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="15" width="13" height="5.5" rx="2.75"/><path d="M4.5 15v-4h4l1.2-4h3.3v8"/><path d="M15 12h3.5l2.5-3v11.5h-3"/><circle cx="5.5" cy="17.75" r=".7" fill="currentColor"/><circle cx="11.5" cy="17.75" r=".7" fill="currentColor"/></svg>Buldozer
     </button>
   </div>
 </div>
@@ -278,7 +290,11 @@ canvas.erasing { cursor: cell; }
   const ROAD_W = 15;
   const KG_PER_M = 1;              // asphalt cost per metre of road
   const START_ASPHALT = 900, PLACE_GRANT = 250;
-  const KG_PER_POINT = 0.3;        // asphalt each arriving car brings, per point it scores
+  const KG_PER_POINT = 0.3;
+  const BETON_START = 100, BETON_EVERY = 60, BETON_KG = 40;
+  // upgrading from 1 to 2 lanes each way costs 1 kg of concrete a metre, from 2 to 3 costs 2
+  const LANE_COST = { 1: 1, 2: 2 }, ROAD_WS = [15, 23, 31], LANE_NAMES = ['', 'Yol', 'Bulvar', 'Otoban'];
+  const FAST = 1.3;                // speed on boulevards and motorways        // asphalt each arriving car brings, per point it scores
   const BRIDGE_COST = 3;           // a metre of bridge costs as much as this many metres of road
   const DAY = 240;                 // seconds for a full day and night
   const SPEED = 52;                // car speed, m/s of game time
@@ -300,26 +316,39 @@ canvas.erasing { cursor: cell; }
     { names: ['Kütüphane', 'Kültür Merkezi', 'Millet Kütüphanesi'], color: 5 },
     { names: ['Stadyum', 'Arena', 'Olimpiyat Stadı'], color: 6 },
   ];
-  // the first missions are hand-tuned; after them they repeat with rising numbers
-  const MISSIONS = [
-    { kind: 'deliver', n: 50, reward: 200 },
-    { kind: 'linked', n: 8, reward: 250 },
-    { kind: 'level', lvl: 1, n: 1, reward: 300 },
-    { kind: 'deliver', n: 150, reward: 400 },
-    { kind: 'everyPlace', n: 15, reward: 400 },
-    { kind: 'points', n: 600, reward: 500 },
-    { kind: 'level', lvl: 2, n: 1, reward: 600 },
-    { kind: 'deliver', n: 400, reward: 800 },
-  ];
-  function mission(i) {
-    if (i < MISSIONS.length) return MISSIONS[i];
-    const k = i - MISSIONS.length, step = Math.floor(k / 3) + 1;
-    return [
-      { kind: 'deliver', n: 400 + 200 * step, reward: 800 + 150 * step },
-      { kind: 'points', n: 1500 * step, reward: 900 + 150 * step },
-      { kind: 'level', lvl: 3, n: step, reward: 1000 + 150 * step },
-    ][k % 3];
-  }
+  // Three missions run at once, each of a different kind; numbers rise with every few completed.
+  // ok: can it be offered now · make: its numbers at tier t · base/value: progress since it began
+  const MISSION_KINDS = {
+    deliver: { ok: () => true, make: t => ({ n: 50 + 60 * t, reward: 200 + 60 * t }),
+      text: m => `${m.n} araba ulaştır`, base: () => S.delivered, value: m => S.delivered - m.base },
+    points: { ok: () => S.delivered > 0, make: t => ({ n: 400 + 400 * t, reward: 250 + 70 * t }),
+      text: m => `${m.n} puan topla`, base: () => S.score, value: m => S.score - m.base },
+    place: { ok: () => true, make: t => ({ p: S.places[Math.floor(Math.random() * S.places.length)], n: 40 + 30 * t, reward: 220 + 60 * t }),
+      text: m => `${m.p.name}: ${m.n} araba ulaştır`, base: m => m.p.got, value: m => m.p.got - m.base },
+    level: { ok: () => true, make: t => ({ lvl: Math.min(3, 1 + Math.floor(t / 2)), n: 1 + Math.floor(t / 4), reward: 300 + 80 * t }),
+      text: m => `${m.n} yeni ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`,
+      base: m => S.houses.filter(h => h.level >= m.lvl).length, value: m => S.houses.filter(h => h.level >= m.lvl).length - m.base },
+    everyPlace: { ok: () => S.places.length >= 2, make: t => ({ n: 15 + 10 * t, reward: 300 + 60 * t }),
+      text: m => `Her mekana ${m.n} araba ulaştır`, base: () => new Map(S.places.map(p => [p, p.got])),
+      value: m => Math.min(...S.places.map(p => p.got - (m.base.get(p) ?? 0))) },
+    bridge: { ok: () => S.river.pts.some(q => inRegion(q)), make: t => ({ n: 30 + 20 * t, reward: 60 + 20 * t, unit: 'beton' }),
+      text: m => `Köprülerden ${m.n} araba geçir`, base: () => S.bridged, value: m => S.bridged - m.base },
+    door: { ok: () => S.places.some(p => p.entrances.length > 1), make: t => ({ n: 25 + 15 * t, reward: 70 + 20 * t, unit: 'beton' }),
+      text: m => `Yan girişlerden ${m.n} araba sok`, base: () => S.sideDoor, value: m => S.sideDoor - m.base },
+    rate: { ok: () => S.delivered >= 20, make: t => ({ n: 25 + 10 * t, reward: 60 + 20 * t, unit: 'beton' }),
+      text: m => `1 dakika içinde ${m.n} araba ulaştır`, base: () => 0, value: () => S.arrivals.filter(x => S.t - x <= 60).length },
+    variety: { ok: () => new Set(S.places.map(p => p.color)).size >= 3, make: t => ({ lvl: t < 4 ? 1 : 2, n: 3, reward: 400 + 60 * t }),
+      text: m => `3 farklı renkte ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`, base: () => 0,
+      value: m => new Set(S.houses.filter(h => h.level >= m.lvl).map(h => h.color)).size },
+    biggest: { ok: () => S.places.some(p => p.level < 2), make: t => ({ n: PLACE_NEEDS[1], reward: 500 + 80 * t }),
+      text: () => 'Bir mekanı en büyük boyutuna ulaştır', base: () => S.places.filter(p => p.level >= 2).length,
+      value: m => S.places.filter(p => p.level >= 2).length > m.base ? m.n : Math.max(0, ...S.places.filter(p => p.level < 2).map(p => p.got)) },
+    lean: { ok: () => S.houses.length - linkedHouses() >= 2, make: t => ({ n: 2 + Math.floor(t / 3), limit: 250 + 50 * Math.floor(t / 3), reward: 250 + 50 * t }),
+      text: m => `En çok ${m.limit} m yeni yolla ${m.n} ev daha bağla`, base: () => ({ linked: linkedHouses(), len: roadLength() }),
+      value: m => linkedHouses() - m.base.linked,
+      over: m => roadLength() - m.base.len > m.limit,     // too much road: the attempt starts again
+      count: (m, v) => `${v}/${m.n} · ${Math.max(0, Math.round(roadLength() - m.base.len))}/${m.limit} m` },
+  };
   const NAME_KEY = 'trafik-cozucu-name', RECORD_KEY = 'trafik-cozucu-record';
 
   const $ = id => document.getElementById(id);
@@ -553,19 +582,21 @@ canvas.erasing { cursor: cell; }
 
   function newGame() {
     S = {
-      t: 0, asphalt: START_ASPHALT, score: 0, delivered: 0,
+      t: 0, asphalt: START_ASPHALT, beton: BETON_START, nextBeton: BETON_EVERY, score: 0, delivered: 0,
       nodes: new Map(), edges: new Map(), nid: 1, eid: 1,
       houses: [], places: [], cars: [],
       nextHouse: 14, nextPlace: 55, nextExpand: EXPAND_EVERY, stage: 0,
-      history: [],                // edge ids of recent roads, newest last, for undo
-      mi: 0, mBase: null, chance: true, lost: null,
+      history: [],                // recent roads and upgrades { kind, ids }, newest last, for undo
+      missions: [], mDone: 0, lastKind: null, bridged: 0, sideDoor: 0, arrivals: [], chance: true, lost: null,
     };
     S.region = regionRect(0);
     makeNature();
+    buildNature();
     const p = addPlace({ x: W / 2, y: H / 2 }, 0, 110);
     addHouse(p.color, p);
     addHouse(p.color, p);
-    startMission();
+    for (const kind of ['deliver', 'lean', 'place']) S.missions.push(newMission(kind));
+    showMissions();
     fitView(S.region, false);
     updateHud();
   }
@@ -590,7 +621,7 @@ canvas.erasing { cursor: cell; }
   function addEdge(a, b) {
     if (a === b || edgeBetween(a.id, b.id)) return null;
     const len = dist(a, b), bridge = inRiver({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    const e = { id: S.eid++, a: a.id, b: b.id, len, bridge, cost: len * KG_PER_M * (bridge ? BRIDGE_COST : 1) };
+    const e = { id: S.eid++, a: a.id, b: b.id, len, bridge, lanes: 1, beton: 0, cost: len * KG_PER_M * (bridge ? BRIDGE_COST : 1) };
     S.edges.set(e.id, e); a.edges.add(e.id); b.edges.add(e.id);
     return e;
   }
@@ -607,7 +638,8 @@ canvas.erasing { cursor: cell; }
     dropEdge(e);
     const n = addNode(x, y);
     const e1 = addEdge(a, n), e2 = addEdge(n, b);
-    for (const h of S.history) if (h.delete(e.id)) { h.add(e1.id); h.add(e2.id); }
+    for (const piece of [e1, e2]) { piece.lanes = e.lanes; piece.beton = e.beton * piece.len / (e1.len + e2.len); }
+    for (const h of S.history) if (h.ids.delete(e.id)) { h.ids.add(e1.id); h.ids.add(e2.id); }
     for (const car of S.cars) {
       for (let k = 0; k < car.path.length - 1; k++) {
         const u = car.path[k], v = car.path[k + 1];
@@ -770,11 +802,17 @@ canvas.erasing { cursor: cell; }
     if (!spot) return null;
     const r = HOUSE_LEVELS[0].r;
     const e = addNode(spot.x + spot.dir[0] * (r + 11), spot.y + spot.dir[1] * (r + 11), true);
-    const h = { kind: 'house', color, x: spot.x, y: spot.y, r, level: 0, got: 0, dir: spot.dir, entrance: e.id, waiting: 0, trip: rand(3, 7), cool: 0, warn: null };
+    const h = { kind: 'house', seed: Math.random(), color, x: spot.x, y: spot.y, r, level: 0, got: 0, dir: spot.dir, entrance: e.id, waiting: 0, trip: rand(3, 7), cool: 0, warn: null };
     S.houses.push(h);
     return h;
   }
   function growTown() {
+    if (S.t >= S.nextBeton) {
+      S.nextBeton += BETON_EVERY;
+      S.beton += BETON_KG;
+      bump('betonBox');
+      Sound.levelUp();
+    }
     if (S.stage < REGION.length - 1 && S.t >= S.nextExpand) {
       S.stage++;
       S.nextExpand += EXPAND_EVERY;
@@ -851,7 +889,7 @@ canvas.erasing { cursor: cell; }
         const e = S.edges.get(id), v = e.a === u ? e.b : e.a;
         const nv = S.nodes.get(v);
         const busy = segCars.get(u + '>' + v)?.length || 0;
-        const w = e.len + 35 * busy + (isJunction(nv) ? 3 : 0) + (nv.fixed && !goals.has(v) ? 25 : 0);
+        const w = e.len / (e.lanes > 1 ? FAST : 1) + 35 * busy / e.lanes + (isJunction(nv) ? 3 : 0) + (nv.fixed && !goals.has(v) ? 25 : 0);
         const nc = c + w;
         if (nc < (best.get(v) ?? Infinity)) { best.set(v, nc); prev.set(v, u); push([nc, v]); }
       }
@@ -891,36 +929,44 @@ canvas.erasing { cursor: cell; }
       segCars.get(key).push(car);
     }
   }
+  // Clear distance at the start of each lane of a piece; a car entering takes the clearest lane.
+  function laneRoom(a, b) {
+    const room = Array((edgeBetween(a, b)?.lanes) || 1).fill(Infinity);
+    for (const o of carsOn(a, b)) if (o.lane < room.length) room[o.lane] = Math.min(room[o.lane], o.d);
+    return room;
+  }
+  const bestLane = (a, b) => { const room = laneRoom(a, b); return room.indexOf(Math.max(...room)); };
   function gapAhead(car) {
     let best = Infinity;
     for (const o of carsOn(car.path[car.i], car.path[car.i + 1])) {
-      if (o !== car && (o.d > car.d || (o.d === car.d && o.id < car.id))) best = Math.min(best, o.d - car.d);
+      if (o !== car && o.lane === car.lane && (o.d > car.d || (o.d === car.d && o.id < car.id))) best = Math.min(best, o.d - car.d);
     }
     if (best < Infinity) return best;
     let ahead = (segLen(car, car.i) ?? 0) - car.d;
     for (let k = car.i + 1; k < car.path.length - 1 && ahead < 45; k++) {
-      for (const o of carsOn(car.path[k], car.path[k + 1])) best = Math.min(best, ahead + o.d);
-      if (best < Infinity) return best;
+      const room = Math.max(...laneRoom(car.path[k], car.path[k + 1]));
+      if (room < Infinity) return ahead + room;
       ahead += segLen(car, k) ?? 0;
     }
     return best;
   }
-  function roomAfter(car, k) {   // is the piece starting at path[k] clear enough to enter?
+  function roomAfter(car, k) {   // is some lane of the piece starting at path[k] clear enough to enter?
     if (k >= car.path.length - 1) return true;
-    return !carsOn(car.path[k], car.path[k + 1]).some(o => o.d < GAP + 2);
+    return Math.max(...laneRoom(car.path[k], car.path[k + 1])) >= GAP + 2;
   }
   function releaseHold(car) {
     if (!car.hold) return;
     S.nodes.get(car.hold)?.holds.delete(car.id);
     car.hold = null;
   }
-  // Up to three cars share a junction as long as no two of them leave by the same road.
-  function canEnter(n, out) {
+  // Several cars share a junction; no more may leave by the same road than it has lanes.
+  function canEnter(n, out, outLanes) {
+    let same = 0;
     for (const [id, h] of n.holds) {
       if (S.t - h.t > 1.5) n.holds.delete(id);      // never let a stuck car lock a junction for good
-      else if (h.out === out) return false;
+      else if (h.out === out) same++;
     }
-    return n.holds.size < 3;
+    return same < outLanes && n.holds.size < 3 + 2 * (outLanes - 1);
   }
   function returnTrip(car) {
     releaseHold(car);
@@ -932,7 +978,11 @@ canvas.erasing { cursor: cell; }
     S.score += v;
     S.asphalt += v * KG_PER_POINT;
     S.delivered++;
-    const pl = S.places.find(p => p.entrances.includes(car.path[car.path.length - 1]));
+    S.arrivals.push(S.t);
+    while (S.t - S.arrivals[0] > 60) S.arrivals.shift();
+    const door = car.path[car.path.length - 1];
+    const pl = S.places.find(p => p.entrances.includes(door));
+    if (pl && pl.entrances.indexOf(door) > 0) S.sideDoor++;
     if (pl) growPlace(pl);
     const h = S.houses[car.house];
     if (h) growHouse(h);
@@ -951,7 +1001,7 @@ canvas.erasing { cursor: cell; }
       if (h.waiting > 0 && h.cool <= 0) {
         const path = route(h.entrance, h.color);
         if (path && path.length >= 2 && roomAfter({ path }, 0)) {
-          S.cars.push({ id: S.nid++, house: idx, level: h.level, color: h.color, path, i: 0, d: 0, routeT: S.t, hold: null, holdLeft: 0, slow: false });
+          S.cars.push({ id: S.nid++, house: idx, level: h.level, color: h.color, path, i: 0, d: 0, lane: bestLane(path[0], path[1]), routeT: S.t, hold: null, holdLeft: 0, slow: false });
           h.waiting--;
           h.cool = 0.6;
           indexCars();
@@ -972,14 +1022,15 @@ canvas.erasing { cursor: cell; }
       if (!isLast && isJunction(nb) && car.hold !== nb.id) {
         const out = car.path[car.i + 2];
         const toStop = len - car.d - 4;
-        if (!canEnter(nb, out) || !roomAfter(car, car.i + 1)) allowed = Math.min(allowed, toStop);
+        if (!canEnter(nb, out, edgeBetween(nb.id, out)?.lanes || 1) || !roomAfter(car, car.i + 1)) allowed = Math.min(allowed, toStop);
         else if (toStop < SPEED * dt + 2) {
           releaseHold(car);
           nb.holds.set(car.id, { out, t: S.t }); car.hold = nb.id; car.holdLeft = (len - car.d) + 12;
         }
       }
-      const step = Math.max(0, Math.min(SPEED * dt, allowed));
-      car.slow = step < SPEED * dt * 0.35;
+      const top = SPEED * dt * (edgeBetween(car.path[car.i], car.path[car.i + 1]).lanes > 1 ? FAST : 1);
+      const step = Math.max(0, Math.min(top, allowed));
+      car.slow = step < top * 0.35;
       car.d += step;
       if (car.hold) { car.holdLeft -= step; if (car.holdLeft <= 0) releaseHold(car); }
       while (car.d >= len) {
@@ -996,6 +1047,11 @@ canvas.erasing { cursor: cell; }
         }
         len = segLen(car, car.i);
         if (len == null) { done.add(car); returnTrip(car); break; }
+        car.lane = bestLane(car.path[car.i], car.path[car.i + 1]);
+        // count each trip over a bridge once
+        const e = edgeBetween(car.path[car.i], car.path[car.i + 1]);
+        if (e.bridge && !car.onBridge) S.bridged++;
+        car.onBridge = e.bridge;
       }
     }
     if (done.size) S.cars = S.cars.filter(c => !done.has(c));
@@ -1006,44 +1062,60 @@ canvas.erasing { cursor: cell; }
   }
 
   // ---------- Missions ----------
-  function startMission() {
-    S.mBase = { delivered: S.delivered, score: S.score, got: new Map(S.places.map(p => [p, p.got])) };
+  const roadLength = () => [...S.edges.values()].reduce((sum, e) => sum + e.len, 0);
+  function newMission(kind) {
+    const K = MISSION_KINDS[kind], m = { kind, ...K.make(Math.floor(S.mDone / 3)) };
+    m.base = K.base(m);
+    return m;
   }
-  function missionProgress(m) {
-    switch (m.kind) {
-      case 'deliver': return S.delivered - S.mBase.delivered;
-      case 'points': return S.score - S.mBase.score;
-      case 'linked': return linkedHouses();
-      case 'level': return S.houses.filter(h => h.level >= m.lvl).length;
-      case 'everyPlace': return Math.min(...S.places.map(p => p.got - (S.mBase.got.get(p) ?? 0)));
+  function pickMission() {
+    const active = new Set(S.missions.map(m => m.kind));
+    const kinds = Object.keys(MISSION_KINDS).filter(k => !active.has(k) && k !== S.lastKind && MISSION_KINDS[k].ok());
+    kinds.sort(() => Math.random() - 0.5);
+    for (const k of kinds) {
+      const m = newMission(k);
+      if (MISSION_KINDS[k].value(m) < m.n) return m;     // skip ones that would finish on the spot
     }
-    return 0;
+    return newMission('deliver');
   }
-  function missionText(m) {
-    switch (m.kind) {
-      case 'deliver': return `${m.n} araba ulaştır`;
-      case 'points': return `${m.n} puan topla`;
-      case 'linked': return `${m.n} evi kendi mekanına bağla`;
-      case 'level': return `${m.n} ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`;
-      case 'everyPlace': return `Her mekana ${m.n} araba ulaştır`;
+  function showMissions() {
+    const box = $('missions');
+    box.textContent = '';
+    for (const m of S.missions) {
+      m.el = document.createElement('div');
+      m.el.className = 'm-row';
+      m.el.innerHTML = '<div class="m-line"><span></span><b></b></div><div class="m-bar"><i></i></div>';
+      m.el.querySelector('span').textContent = MISSION_KINDS[m.kind].text(m) + ' ';
+      m.count = document.createElement('small');
+      m.el.querySelector('span').appendChild(m.count);
+      const chip = m.el.querySelector('b');
+      chip.className = m.unit || 'asfalt';
+      chip.append($(m.unit === 'beton' ? 'betonBox' : 'asphaltBox').querySelector('svg').cloneNode(true), `+${m.reward}`);
+      box.appendChild(m.el);
     }
-    return '';
   }
-  function checkMission() {
-    const m = mission(S.mi), v = Math.max(0, Math.min(m.n, missionProgress(m)));
-    $('mText').textContent = missionText(m);
-    $('mReward').textContent = `+${m.reward} kg`;
-    $('mBar').style.width = `${(v / m.n) * 100}%`;
-    $('mCount').textContent = `${v} / ${m.n}`;
-    if (v < m.n) return;
-    S.asphalt += m.reward;
-    bump();
-    Sound.place();
-    Sound.asphalt();
-    toast(`Görev tamam  +${m.reward} kg asfalt`);
-    S.mi++;
-    startMission();
-    checkMission();
+  function checkMissions() {
+    let changed = false;
+    S.missions = S.missions.map(m => {
+      const K = MISSION_KINDS[m.kind];
+      if (K.over && K.over(m)) { m.base = K.base(m); toast('Yol sınırı aşıldı, görev baştan başladı'); }
+      const v = Math.max(0, Math.min(m.n, K.value(m)));
+      m.count.textContent = K.count ? K.count(m, v) : `${v}/${m.n}`;
+      m.el.querySelector('i').style.width = `${(v / m.n) * 100}%`;
+      if (v < m.n) return m;
+      if (m.unit === 'beton') { S.beton += m.reward; bump('betonBox'); } else { S.asphalt += m.reward; bump(); }
+      Sound.place();
+      Sound.asphalt();
+      toast(`Görev tamam  +${m.reward} kg ${m.unit === 'beton' ? 'beton' : 'asfalt'}`);
+      S.mDone++;
+      S.lastKind = m.kind;
+      changed = true;
+      return null;
+    }).filter(Boolean);
+    if (!changed) return;
+    while (S.missions.length < 3) S.missions.push(pickMission());
+    showMissions();
+    checkMissions();
   }
 
   // ---------- Jams ----------
@@ -1087,7 +1159,7 @@ canvas.erasing { cursor: cell; }
     updateHud();
     (S.chance ? $('chanceBtn') : $('againBtn')).focus();
   }
-  // one extra chance per game: clear the jammed house and carry on with time stopped
+  // one extra chance per game: clear the jammed house and carry on
   $('chanceBtn').onclick = () => {
     if (!S.chance || !S.lost) return;
     S.chance = false;
@@ -1096,7 +1168,6 @@ canvas.erasing { cursor: cell; }
     running = true; paused = false;
     $('over').hidden = true;
     Sound.setPlaying(true);
-    setFrozen(true);
   };
 
   // ---------- Drawing & erasing ----------
@@ -1166,7 +1237,9 @@ canvas.erasing { cursor: cell; }
 
     let prev = resolveAnchor(s.start) || addNode(line[0].x, line[0].y);
     const endNode = s.end ? resolveAnchor(s.end) : null;
+    // registered up front so a stroke that crosses itself keeps its own ids in step with the splits
     const added = new Set();
+    S.history.push({ kind: 'road', ids: added });
     for (let i = 1; i < line.length; i++) {
       const a = { x: prev.x, y: prev.y }, b = line[i];
       const lastPiece = i === line.length - 1 && endNode;
@@ -1187,36 +1260,88 @@ canvas.erasing { cursor: cell; }
       const target = lastPiece ? endNode : addNode(b.x, b.y);
       if (target !== prev) { const e = addEdge(prev, target); if (e) added.add(e.id); prev = target; }
     }
-    S.history.push(added);
-    if (S.history.length > 20) S.history.shift();
-    S.asphalt -= cost;
+    if (!added.size) S.history.pop();
+    else if (S.history.length > 20) S.history.shift();
+    // charge exactly what the new pieces are worth, so the bulldozer and undo give back the same
+    S.asphalt -= [...added].reduce((sum, id) => sum + S.edges.get(id).cost, 0);
     updateHud();
   }
 
-  // Remove road pieces and hand their asphalt back. Returns the refund in kg.
+  function remember(kind, ids) {
+    if (!ids.size) return;
+    S.history.push({ kind, ids });
+    if (S.history.length > 20) S.history.shift();
+  }
+  // Remove road pieces and hand their asphalt and concrete back. Returns what came back.
   function removeEdges(list) {
-    let refund = 0;
-    for (const e of list) { refund += e.cost; dropEdge(e); }
-    if (!list.length) return 0;
+    let kg = 0, beton = 0;
+    for (const e of list) { kg += e.cost; beton += e.beton; dropEdge(e); }
+    if (!list.length) return { kg: 0, beton: 0 };
     for (const n of [...S.nodes.values()]) if (!n.fixed && n.edges.size === 0) S.nodes.delete(n.id);
-    refund = Math.round(refund);
-    S.asphalt += refund;
+    S.asphalt += kg; S.beton += beton;
     // cars on a removed piece of road go back home and try again
     const keep = [];
     for (const car of S.cars) { if (segLen(car, car.i) == null) returnTrip(car); else keep.push(car); }
     S.cars = keep;
     updateHud();
-    return refund;
+    return { kg, beton };
   }
+  const refundText = r => `+${Math.round(r.kg)} kg asfalt` + (r.beton >= 0.5 ? `, +${Math.round(r.beton)} kg beton` : '');
   function eraseAt(p) {
     const r = pxToWorld(18);
     removeEdges([...S.edges.values()].filter(e => nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r));
   }
   function undo() {
     while (S.history.length) {
-      const list = [...S.history.pop()].map(id => S.edges.get(id)).filter(Boolean);
-      if (list.length) { toast(`Yol geri alındı  +${removeEdges(list)} kg`); return; }
+      const h = S.history.pop();
+      const list = [...h.ids].map(id => S.edges.get(id)).filter(e => e && (h.kind === 'road' || e.lanes > 1));
+      if (!list.length) continue;
+      if (h.kind === 'road') { toast(`Yol geri alındı  ${refundText(removeEdges(list))}`); return; }
+      let back = 0;
+      for (const e of list) {
+        const cost = e.len * LANE_COST[e.lanes - 1];
+        e.lanes--; e.beton -= cost; back += cost;
+      }
+      for (const car of S.cars) { const e = edgeBetween(car.path[car.i], car.path[car.i + 1]); if (e) car.lane = Math.min(car.lane, e.lanes - 1); }
+      S.beton += back;
+      toast(`Yükseltme geri alındı  +${Math.round(back)} kg beton`);
+      updateHud();
+      return;
     }
+    updateHud();
+  }
+  // Upgrade: every road piece the finger passes over gains a lane each way, once per stroke.
+  let upStroke = null;
+  function upgradeAt(p) {
+    const r = pxToWorld(16);
+    for (const e of S.edges.values()) {
+      if (e.lanes >= 3 || upStroke.ids.has(e.id)) continue;
+      if (nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d >= r) continue;
+      const cost = e.len * LANE_COST[e.lanes];
+      if (cost > S.beton) {
+        if (!upStroke.short) { upStroke.short = true; Sound.denied(); toast('Beton yetmiyor'); }
+        continue;
+      }
+      S.beton -= cost; e.beton += cost; e.lanes++;
+      upStroke.ids.add(e.id); upStroke.spent += cost; upStroke.top = Math.max(upStroke.top, e.lanes);
+    }
+  }
+  function upgradeStroke(p) {
+    if (!upStroke) upStroke = { ids: new Set(), spent: 0, top: 0, short: false, last: null };
+    const last = upStroke.last;
+    if (last) {
+      const n = Math.ceil(dist(last, p) / 5);
+      for (let k = 1; k <= n; k++) upgradeAt({ x: last.x + (p.x - last.x) * k / n, y: last.y + (p.y - last.y) * k / n });
+    } else upgradeAt(p);
+    upStroke.last = p;
+    updateHud();
+  }
+  function upgradeEnd() {
+    const u = upStroke; upStroke = null;
+    if (!u || !u.ids.size) return;
+    remember('up', u.ids);
+    Sound.drawStop(true);
+    toast(`${LANE_NAMES[u.top]} yapıldı  −${Math.round(u.spent)} kg beton`);
     updateHud();
   }
   $('undoBtn').onclick = () => { if (running && !paused) undo(); };
@@ -1234,6 +1359,7 @@ canvas.erasing { cursor: cell; }
   let activePointer = null, cursor = null, pinch = null;
   function cancelGesture() {
     if (stroke) { stroke = null; Sound.drawStop(false); }
+    upgradeEnd();
     activePointer = null; eraseLast = null;
   }
   function startPinch() {
@@ -1242,18 +1368,28 @@ canvas.erasing { cursor: cell; }
     pinch = { d0: Math.max(10, dist(a, b)), z0: cam.z, world: { x: cam.x + mid.x / cam.z, y: cam.y + mid.y / cam.z } };
     camTarget = null;
   }
+  let drag = null;
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'mouse' && e.button > 0) { drag = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y }; camTarget = null; return; }
     pointers.set(e.pointerId, local(e));
     if (pointers.size === 2) { cancelGesture(); startPinch(); return; }
     if (pointers.size > 2 || pinch || !running || paused || e.button > 0) return;
     activePointer = e.pointerId;
     const p = toWorld(e);
     cursor = p;
-    if (mode === 'draw') strokeStart(p); else { eraseLast = null; eraseStroke(p); }
+    if (mode === 'draw') strokeStart(p);
+    else if (mode === 'up') upgradeStroke(p);
+    else { eraseLast = null; eraseStroke(p); }
   });
   canvas.addEventListener('pointermove', e => {
+    if (drag && e.pointerType === 'mouse') {
+      cam.x = drag.cx - (e.clientX - drag.x) / cam.z; cam.y = drag.cy - (e.clientY - drag.y) / cam.z;
+      clampCam();
+      return;
+    }
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
     if (pinch) {
       if (pointers.size < 2) return;
@@ -1267,9 +1403,11 @@ canvas.erasing { cursor: cell; }
     cursor = p;
     if (!running) return;
     if (mode === 'draw' && stroke) strokeMove(p);
+    else if (mode === 'up') upgradeStroke(p);
     else if (mode === 'erase') eraseStroke(p);
   });
   function lift(e, cancelled) {
+    if (drag && e.pointerType === 'mouse') { drag = null; return; }
     pointers.delete(e.pointerId);
     if (pinch && pointers.size < 2) pinch = null;
     if (e.pointerId === activePointer) {
@@ -1321,24 +1459,29 @@ canvas.erasing { cursor: cell; }
   function setMode(m) {
     mode = m;
     $('drawBtn').setAttribute('aria-pressed', m === 'draw');
+    $('upBtn').setAttribute('aria-pressed', m === 'up');
     $('eraseBtn').setAttribute('aria-pressed', m === 'erase');
     canvas.classList.toggle('erasing', m === 'erase');
     cancelGesture();
   }
   $('drawBtn').onclick = () => setMode('draw');
+  $('upBtn').onclick = () => setMode('up');
   $('eraseBtn').onclick = () => setMode('erase');
 
   // ---------- HUD ----------
+  // big numbers shortened so they fit the narrow gauges: 2150 → "2,2 B"
+  const short = n => n < 1000 ? String(Math.floor(n)) : new Intl.NumberFormat('tr', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
   const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
   function updateHud() {
-    $('asphalt').textContent = `${Math.floor(S.asphalt)} kg`;
-    $('score').textContent = S.score;
-    $('recordLine').textContent = `Rekor ${record ? record.score : '–'}`;
+    $('asphalt').innerHTML = `${short(S.asphalt)}<em>kg</em>`;
+    $('beton').innerHTML = `${short(S.beton)}<em>kg</em>`;
+    $('score').textContent = short(S.score);
+    $('recordLine').textContent = `Rekor ${record ? short(record.score) : '–'}`;
     $('clock').textContent = fmtTime(S.t);
     $('undoBtn').disabled = !S.history.length;
-    checkMission();
+    checkMissions();
   }
-  function bump() { const b = $('asphaltBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+  function bump(id = 'asphaltBox') { const b = $(id); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   let toastTimer;
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.hidden = false;
@@ -1349,9 +1492,11 @@ canvas.erasing { cursor: cell; }
   function readColors() {
     const cs = getComputedStyle(document.documentElement);
     for (const n of ['ground', 'ground-mark', 'fog', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'jam', 'preview', 'preview-bad', 'fg',
-      'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp']) {
+      'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp',
+      'sand', 'sidewalk', 'grass-light', 'grass-dark', 'glass']) {
       colors[n] = cs.getPropertyValue('--' + n).trim();
     }
+    if (S) buildNature();
   }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
   new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -1378,24 +1523,34 @@ canvas.erasing { cursor: cell; }
     const p = (t % DAY) / DAY;
     return p < 0.5 ? 0 : p < 0.6 ? (p - 0.5) / 0.1 : p < 0.9 ? 1 : 1 - (p - 0.9) / 0.1;
   }
-  // Roads as continuous stretches between junctions and dead ends.
+  // Roads as continuous stretches between junctions, dead ends and changes of width.
   function roadChains() {
     const seen = new Set(), chains = [];
     const walk = (node, e) => {
-      const pts = [node];
-      while (e && !seen.has(e.id)) {
+      const pts = [node], lanes = e.lanes;
+      while (e && !seen.has(e.id) && e.lanes === lanes) {
         seen.add(e.id);
         node = S.nodes.get(e.a === node.id ? e.b : e.a);
         pts.push(node);
         if (node.edges.size !== 2) break;
         e = [...node.edges].map(id => S.edges.get(id)).find(x => !seen.has(x.id));
       }
+      pts.lanes = lanes;
       return pts;
     };
     for (const n of S.nodes.values()) if (n.edges.size !== 2) for (const id of n.edges) if (!seen.has(id)) chains.push(walk(n, S.edges.get(id)));
     for (const e of S.edges.values()) if (!seen.has(e.id)) chains.push(walk(S.nodes.get(e.a), e));   // closed loops
     return chains;
   }
+  // a polyline shifted sideways (to the right of travel for positive d)
+  function offsetLine(path, pts, d) {
+    pts.forEach((q, i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
+      i ? path.lineTo(q.x + nx * d, q.y + ny * d) : path.moveTo(q.x + nx * d, q.y + ny * d);
+    });
+  }
+  const laneW = lanes => (ROAD_WS[lanes - 1] / 2 - 1) / lanes;
   function rrect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -1407,37 +1562,289 @@ canvas.erasing { cursor: cell; }
     ctx.lineWidth = 3; ctx.strokeStyle = colors.ground; ctx.strokeText(text, x, y);
     ctx.fillStyle = color || colors.fg; ctx.fillText(text, x, y);
   }
+  const SUN = { x: 0.8, y: 1.1 };   // shadows fall down and to the right, scaled by height
+  // the footprint swept towards the sun's shadow side, so it stays attached to the building
+  function shadow(x, y, w, h, r, height) {
+    const ox = SUN.x * height, oy = SUN.y * height;
+    ctx.fillStyle = 'rgba(0,0,0,.24)';
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.lineTo(x + w + ox, y + oy + r); ctx.lineTo(x + w + ox, y + h + oy - r);
+    ctx.lineTo(x + w + ox - r, y + h + oy); ctx.lineTo(x + ox + r, y + h + oy); ctx.lineTo(x, y + h - r); ctx.lineTo(x, y + r);
+    ctx.closePath(); ctx.fill();
+  }
+  function tint(alpha, light) { ctx.fillStyle = light ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`; }
+
+  // ---------- Nature layer ----------
+  // Land, water, rocks and trees never change during a game, so they are painted once into an
+  // offscreen picture and copied each frame; detail here costs nothing while playing.
+  let natureLayer = null;
+  function buildNature() {
+    const k = Math.min(2, 4096 / Math.max(W, H));
+    const c = natureLayer || document.createElement('canvas');
+    c.width = Math.ceil(W * k); c.height = Math.ceil(H * k);
+    const g = c.getContext('2d');
+    g.setTransform(k, 0, 0, k, 0, 0);
+    g.fillStyle = colors.ground; g.fillRect(0, 0, W, H);
+    // soft patches of lighter and darker grass, then short blades
+    g.globalAlpha = 0.45;
+    for (let i = 0; i < W * H / 7000; i++) {
+      g.fillStyle = Math.random() < 0.5 ? colors['grass-light'] : colors['grass-dark'];
+      g.beginPath(); g.ellipse(rand(0, W), rand(0, H), rand(18, 60), rand(10, 36), rand(0, 3), 0, 7); g.fill();
+    }
+    g.globalAlpha = 0.55;
+    for (let i = 0; i < W * H / 110; i++) {
+      g.fillStyle = Math.random() < 0.5 ? colors['grass-light'] : colors['grass-dark'];
+      g.fillRect(rand(0, W), rand(0, H), 1.1, rand(1.5, 3.2));
+    }
+    g.globalAlpha = 1;
+    // river: sandy banks, water, a paler current along the middle
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    const river = new Path2D();
+    S.river.pts.forEach((q, i) => i ? river.lineTo(q.x, q.y) : river.moveTo(q.x, q.y));
+    const hw = S.river.hw;
+    g.strokeStyle = colors.sand; g.lineWidth = hw * 2 + 9; g.stroke(river);
+    g.strokeStyle = colors['water-edge']; g.lineWidth = hw * 2 + 2; g.stroke(river);
+    g.strokeStyle = colors.water; g.lineWidth = hw * 2 - 2; g.stroke(river);
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = hw * 0.8; g.stroke(river);
+    for (const l of S.lakes) {
+      const shape = scale => {
+        const path = new Path2D();
+        for (let i = 0; i <= 64; i++) {
+          const a = i / 64 * Math.PI * 2, r = lakeEdge(l, a) * scale;
+          i ? path.lineTo(l.x + Math.cos(a) * r, l.y + Math.sin(a) * r) : path.moveTo(l.x + Math.cos(a) * r, l.y + Math.sin(a) * r);
+        }
+        return path;
+      };
+      const lake = shape(1);
+      g.strokeStyle = colors.sand; g.lineWidth = 9; g.stroke(lake);
+      g.fillStyle = colors.water; g.fill(lake);
+      g.strokeStyle = colors['water-edge']; g.lineWidth = 2; g.stroke(lake);
+      g.fillStyle = 'rgba(0,0,0,.08)'; g.fill(shape(0.7));        // deeper water in the middle
+      g.fillStyle = 'rgba(0,0,0,.07)'; g.fill(shape(0.4));
+    }
+    // shadows for everything standing up, then rocks, then trees
+    for (const o of S.obstacles) {
+      if (o.v == null) o.v = Math.random();
+      const h = o.kind === 'tree' ? 4.5 : 2;
+      g.fillStyle = 'rgba(0,0,0,.2)';
+      g.beginPath(); g.ellipse(o.x + SUN.x * h, o.y + SUN.y * h, o.r, o.r * 0.85, 0, 0, 7); g.fill();
+    }
+    for (const o of S.obstacles) if (o.kind === 'rock') {
+      const pts = Array.from({ length: 7 }, (_, i) => {
+        const a = i / 7 * Math.PI * 2 + o.v, r = o.r * (0.78 + 0.3 * Math.abs(Math.sin(o.v * 9 + i * 2.3)));
+        return [o.x + Math.cos(a) * r, o.y + Math.sin(a) * r * 0.85];
+      });
+      g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath();
+      g.fillStyle = colors.rock; g.fill();
+      g.strokeStyle = colors['rock-edge']; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(255,255,255,.28)';
+      g.beginPath(); g.ellipse(o.x - o.r * 0.25, o.y - o.r * 0.3, o.r * 0.45, o.r * 0.3, -0.5, 0, 7); g.fill();
+    }
+    for (const o of S.obstacles) if (o.kind === 'tree') {
+      if (o.v < 0.3) {
+        // conifer: a dark star with a lighter heart
+        const star = (r1, r2, col) => {
+          g.beginPath();
+          for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2 + o.v * 5, r = i % 2 ? r2 : r1; g.lineTo(o.x + Math.cos(a) * r, o.y + Math.sin(a) * r); }
+          g.closePath(); g.fillStyle = col; g.fill();
+        };
+        star(o.r, o.r * 0.62, colors['tree-dark']);
+        star(o.r * 0.6, o.r * 0.36, colors.tree);
+      } else {
+        // broadleaf: overlapping lobes, lit from the top left
+        g.fillStyle = colors['tree-dark'];
+        for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + o.v * 7; g.beginPath(); g.arc(o.x + Math.cos(a) * o.r * 0.4, o.y + Math.sin(a) * o.r * 0.4, o.r * 0.62, 0, 7); g.fill(); }
+        g.fillStyle = colors.tree;
+        for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + o.v * 3; g.beginPath(); g.arc(o.x - o.r * 0.12 + Math.cos(a) * o.r * 0.28, o.y - o.r * 0.12 + Math.sin(a) * o.r * 0.28, o.r * 0.5, 0, 7); g.fill(); }
+        g.fillStyle = 'rgba(255,255,255,.14)';
+        g.beginPath(); g.arc(o.x - o.r * 0.3, o.y - o.r * 0.32, o.r * 0.32, 0, 7); g.fill();
+      }
+    }
+    natureLayer = c;
+  }
+
+  // ---------- Buildings ----------
+  // A strip along one side of a place, e.g. an awning over its entrance. dir is [dx, dy].
+  function sideBand(p, dir, depth) {
+    const s = p.r;
+    if (dir[0]) return { x: dir[0] > 0 ? p.x + s - depth : p.x - s, y: p.y - s, w: depth, h: 2 * s, along: 'y' };
+    return { x: p.x - s, y: dir[1] > 0 ? p.y + s - depth : p.y - s, w: 2 * s, h: depth, along: 'x' };
+  }
+  function drawPlace(p, dark) {
+    const s = p.r, c = colors['c' + p.color], x0 = p.x - s, y0 = p.y - s, size = 2 * s;
+    shadow(x0, y0, size, size, 5, 4 + p.level * 2);
+    const roof = (x, y, w, h, fill) => {
+      ctx.fillStyle = fill; rrect(x, y, w, h, 3); ctx.fill();
+      ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; rrect(x + 2, y + 2, w - 4, h - 4, 2); ctx.stroke();
+    };
+    switch (p.def.color) {
+      case 1: {   // market: coloured roof with skylights and a striped awning over the entrance
+        roof(x0, y0, size, size, c);
+        tint(0.45, true);
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) ctx.fillRect(x0 + size * (0.18 + i * 0.25), y0 + size * (0.25 + j * 0.25), size * 0.14, size * 0.1);
+        const band = sideBand(p, p.sides[0], s * 0.32), n = 7;
+        for (let i = 0; i < n; i++) {
+          ctx.fillStyle = i % 2 ? '#ffffff' : c;
+          if (band.along === 'x') ctx.fillRect(band.x + band.w * i / n, band.y, band.w / n, band.h);
+          else ctx.fillRect(band.x, band.y + band.h * i / n, band.w, band.h / n);
+        }
+        break;
+      }
+      case 2: {   // school: an L-shaped wing round a sports court
+        ctx.fillStyle = '#6aa65e'; rrect(x0, y0, size, size, 4); ctx.fill();
+        roof(x0, y0, size, size * 0.42, c);
+        roof(x0, y0, size * 0.42, size, c);
+        const cx = x0 + size * 0.48, cy = y0 + size * 0.48, cw = size * 0.46;
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 0.9;
+        ctx.strokeRect(cx + 1, cy + 1, cw - 2, cw - 2);
+        ctx.beginPath(); ctx.moveTo(cx + 1, cy + cw / 2); ctx.lineTo(cx + cw - 1, cy + cw / 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx + cw / 2, cy + cw / 2, cw * 0.15, 0, 7); ctx.stroke();
+        break;
+      }
+      case 3: {   // park: lawn with crossing paths, a fountain and a few trees
+        ctx.fillStyle = c; rrect(x0, y0, size, size, 6); ctx.fill();
+        ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.strokeStyle = colors.sand; ctx.lineWidth = s * 0.2; ctx.lineCap = 'butt';
+        ctx.beginPath(); ctx.moveTo(p.x, y0 + 2); ctx.lineTo(p.x, y0 + size - 2); ctx.moveTo(x0 + 2, p.y); ctx.lineTo(x0 + size - 2, p.y); ctx.stroke();
+        ctx.lineCap = 'round';
+        ctx.fillStyle = colors.sand; ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.36, 0, 7); ctx.fill();
+        ctx.fillStyle = colors.water; ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.24, 0, 7); ctx.fill();
+        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const tx = p.x + dx * s * 0.55, ty = p.y + dy * s * 0.55;
+          ctx.fillStyle = colors['tree-dark']; ctx.beginPath(); ctx.arc(tx, ty, s * 0.26, 0, 7); ctx.fill();
+          ctx.fillStyle = colors.tree; ctx.beginPath(); ctx.arc(tx - 1, ty - 1, s * 0.17, 0, 7); ctx.fill();
+        }
+        break;
+      }
+      case 4: {   // hospital: a white block in the place colour, a red cross and a helipad
+        roof(x0, y0, size, size, colors.building);
+        ctx.strokeStyle = c; ctx.lineWidth = 3; rrect(x0 + 1.5, y0 + 1.5, size - 3, size - 3, 3); ctx.stroke();
+        ctx.fillStyle = '#d8402f';
+        ctx.fillRect(p.x - s * 0.5 - s * 0.12, p.y - s * 0.12 - s * 0.18, s * 0.24, s * 0.6);
+        ctx.fillRect(p.x - s * 0.5 - s * 0.3, p.y - s * 0.12, s * 0.6, s * 0.24);
+        const hx = p.x + s * 0.42, hy = p.y + s * 0.36;
+        ctx.fillStyle = '#3b403d'; ctx.beginPath(); ctx.arc(hx, hy, s * 0.36, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = `700 ${s * 0.45}px system-ui, sans-serif`; ctx.fillText('H', hx, hy + 0.5);
+        break;
+      }
+      case 5: {   // library: a domed roof behind a colonnade
+        roof(x0, y0, size, size, c);
+        const band = sideBand(p, p.sides[0], s * 0.3);
+        ctx.fillStyle = colors.building; ctx.fillRect(band.x, band.y, band.w, band.h);
+        ctx.fillStyle = 'rgba(0,0,0,.3)';
+        for (let i = 0; i < 6; i++) {
+          if (band.along === 'x') ctx.fillRect(band.x + band.w * (i + 0.35) / 6, band.y + 1, 1.3, band.h - 2);
+          else ctx.fillRect(band.x + 1, band.y + band.h * (i + 0.35) / 6, band.w - 2, 1.3);
+        }
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.48, 0, 7); ctx.fill();
+        tint(0.3, true); ctx.beginPath(); ctx.arc(p.x - s * 0.1, p.y - s * 0.1, s * 0.34, 0, 7); ctx.fill();
+        ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.48, 0, 7); ctx.stroke();
+        ctx.fillStyle = colors.building; ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.1, 0, 7); ctx.fill();
+        break;
+      }
+      default: {  // stadium: oval stands round a pitch
+        ctx.fillStyle = c; rrect(x0, y0, size, size, s * 0.8); ctx.fill();
+        ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.4; ctx.stroke();
+        tint(0.25, true); rrect(x0 + 3, y0 + 3, size - 6, size - 6, s * 0.7); ctx.fill();
+        ctx.fillStyle = '#4f9a45'; ctx.beginPath(); ctx.ellipse(p.x, p.y, s * 0.62, s * 0.42, 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 0.8; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.x, p.y - s * 0.42); ctx.lineTo(p.x, p.y + s * 0.42); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, s * 0.12, 0, 7); ctx.stroke();
+      }
+    }
+    if (p.level >= 2) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 2.2; rrect(x0 - 2, y0 - 2, size + 4, size + 4, 7); ctx.stroke(); }
+    if (dark > 0.3) { ctx.globalAlpha = dark; ctx.fillStyle = colors.lamp; ctx.beginPath(); ctx.arc(x0 + 3, y0 + 3, 1.6, 0, 7); ctx.arc(x0 + size - 3, y0 + 3, 1.6, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    const counter = p.level < PLACE_NEEDS.length ? `  ${p.got}/${PLACE_NEEDS[p.level]}` : '';
+    label(p.name + counter, p.x, p.dir[1] === -1 ? p.y + s + 9 : p.y - s - 8, 10);
+  }
+  // Homes seen from above: a pitched roof, then flat roofs that grow taller and busier.
+  function drawHome(h, dark) {
+    const s = h.r, c = colors['c' + h.color], x0 = h.x - s, y0 = h.y - s, size = 2 * s, L = h.level;
+    shadow(x0, y0, size, size, 3, [2.5, 5, 8, 13][L]);
+    const block = (x, y, w, hgt) => {
+      ctx.fillStyle = c; rrect(x, y, w, hgt, 2); ctx.fill();
+      ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 0.9; rrect(x + 1.6, y + 1.6, w - 3.2, hgt - 3.2, 1.5); ctx.stroke();
+    };
+    const lights = [];
+    if (L === 0) {
+      ctx.fillStyle = c; rrect(x0, y0, size, size, 2); ctx.fill();
+      tint(0.2, true); ctx.fillRect(x0 + 1, y0 + 1, size - 2, s - 1);              // sunny slope
+      tint(0.16, false); ctx.fillRect(x0 + 1, h.y, size - 2, s - 1);              // shaded slope
+      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 2, h.y); ctx.lineTo(x0 + size - 2, h.y); ctx.stroke();
+      ctx.fillStyle = '#5b4a3f'; ctx.fillRect(h.x + s * 0.35, h.y - s * 0.65, 3, 3);   // chimney
+      ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.2; rrect(x0, y0, size, size, 2); ctx.stroke();
+      lights.push([h.x - s * 0.4, h.y + s * 0.5]);
+    } else if (L === 1) {
+      block(x0, y0, size, size);
+      tint(0.28, false); ctx.fillRect(h.x + s * 0.2, h.y - s * 0.7, s * 0.5, s * 0.45);   // stair hut
+      ctx.fillStyle = '#d9dbd4'; ctx.fillRect(h.x - s * 0.6, h.y + s * 0.2, 3, 3); ctx.fillRect(h.x - s * 0.15, h.y + s * 0.2, 3, 3);
+      lights.push([h.x - s * 0.5, h.y - s * 0.5], [h.x + s * 0.5, h.y + s * 0.5]);
+    } else if (L === 2) {
+      ctx.fillStyle = colors.tree; rrect(x0, y0, size, size, 3); ctx.fill();          // shared garden
+      block(x0, y0, size * 0.56, size);
+      block(x0 + size * 0.64, y0, size * 0.36, size * 0.62);
+      ctx.fillStyle = '#d9dbd4'; ctx.fillRect(x0 + size * 0.15, y0 + size * 0.2, 3, 3); ctx.fillRect(x0 + size * 0.3, y0 + size * 0.7, 3, 3);
+      lights.push([x0 + size * 0.28, y0 + size * 0.45], [x0 + size * 0.82, y0 + size * 0.3], [x0 + size * 0.2, y0 + size * 0.85]);
+    } else {
+      block(x0, y0, size, size);
+      tint(0.18, false); rrect(x0 + 1, y0 + 1, size - 2, size - 2, 2); ctx.fill();
+      block(x0 + s * 0.3, y0 + s * 0.3, size - s * 0.6, size - s * 0.6);            // setback
+      block(x0 + s * 0.62, y0 + s * 0.62, size - s * 1.24, size - s * 1.24);        // top floor
+      ctx.fillStyle = '#d9dbd4'; ctx.beginPath(); ctx.arc(h.x + s * 0.12, h.y - s * 0.1, s * 0.16, 0, 7); ctx.fill();   // water tank
+      ctx.strokeStyle = '#3b403d'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(h.x - s * 0.2, h.y + s * 0.2); ctx.lineTo(h.x - s * 0.2, h.y - s * 0.25); ctx.stroke();   // antenna
+      lights.push([x0 + 3, y0 + 3], [x0 + size - 3, y0 + 3], [x0 + 3, y0 + size - 3], [x0 + size - 3, y0 + size - 3]);
+    }
+    if (dark > 0.3) {
+      ctx.fillStyle = colors.lamp; ctx.globalAlpha = dark;
+      for (const [lx, ly] of lights) { ctx.beginPath(); ctx.arc(lx, ly, 1.5, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  }
+  // Cars from above: body, windscreen, roof, lights; fancier homes send longer, gold-trimmed cars.
+  function drawCar(x, y, ang, cl, color, L) {
+    ctx.save(); ctx.translate(x + 0.9, y + 1.2); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; rrect(-cl / 2, -3, cl, 6, 2.2); ctx.fill();
+    ctx.restore();
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    const f = cl / 2, b = -cl / 2;
+    ctx.fillStyle = color; rrect(b, -3, cl, 6, 2.2); ctx.fill();
+    if (L >= 3) { ctx.strokeStyle = '#141414'; ctx.lineWidth = 0.7; ctx.stroke(); }
+    ctx.fillStyle = colors.glass;
+    ctx.beginPath(); ctx.moveTo(f - 4.4, -2.5); ctx.lineTo(f - 2.5, -2.1); ctx.lineTo(f - 2.5, 2.1); ctx.lineTo(f - 4.4, 2.5); ctx.closePath(); ctx.fill();   // windscreen
+    ctx.fillRect(b + 1.3, -2.1, 1.3, 4.2);                                                     // rear window
+    if (L >= 3) { ctx.fillStyle = 'rgba(20,20,20,.65)'; ctx.fillRect(b + 2.8, -2.3, cl - 7.4, 4.6); }
+    else { tint(0.2, true); ctx.fillRect(b + 2.8, -2.3, cl - 7.4, 4.6); }                    // roof
+    if (L >= 2) { ctx.fillStyle = colors.accent; ctx.fillRect(b + 1, -3, cl - 2, 0.8); ctx.fillRect(b + 1, 2.2, cl - 2, 0.8); }
+    ctx.fillStyle = '#fff6c8'; ctx.fillRect(f - 0.9, -2.7, 0.9, 1.2); ctx.fillRect(f - 0.9, 1.5, 0.9, 1.2);
+    ctx.fillStyle = '#c43a2f'; ctx.fillRect(b, -2.7, 0.7, 1.2); ctx.fillRect(b, 1.5, 0.7, 1.2);
+    ctx.restore();
+  }
 
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = colors['ground-mark']; ctx.fillRect(0, 0, cssW, cssH);
     ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
-    ctx.fillStyle = colors.ground; ctx.fillRect(0, 0, W, H);
-    // faint survey pegs so the empty land reads as a building site
-    ctx.fillStyle = colors['ground-mark'];
-    for (let x = 30; x < W; x += 40) for (let y = 30; y < H; y += 40) ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
-
-    // water: river then lakes, each with a darker bank
+    if (natureLayer) {
+      // copy only the part on screen, with plain scaling: this is the biggest cost of a frame
+      const k = natureLayer.width / W;
+      const x0 = Math.max(0, cam.x), y0 = Math.max(0, cam.y), x1 = Math.min(W, cam.x + cssW / cam.z), y1 = Math.min(H, cam.y + cssH / cam.z);
+      ctx.imageSmoothingQuality = 'low';
+      if (x1 > x0 && y1 > y0) ctx.drawImage(natureLayer, x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k, x0, y0, x1 - x0, y1 - y0);
+    }
+    const now = performance.now();
+    // ripples drifting down the river
+    ctx.save();
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const river = new Path2D();
-    S.river.pts.forEach((q, i) => i ? river.lineTo(q.x, q.y) : river.moveTo(q.x, q.y));
-    ctx.strokeStyle = colors['water-edge']; ctx.lineWidth = S.river.hw * 2 + 4; ctx.stroke(river);
-    ctx.strokeStyle = colors.water; ctx.lineWidth = S.river.hw * 2; ctx.stroke(river);
-    for (const l of S.lakes) {
-      ctx.beginPath();
-      for (let k = 0; k <= 48; k++) {
-        const a = k / 48 * Math.PI * 2, r = lakeEdge(l, a);
-        ctx.lineTo(l.x + Math.cos(a) * r, l.y + Math.sin(a) * r);
-      }
-      ctx.fillStyle = colors.water; ctx.fill();
-      ctx.strokeStyle = colors['water-edge']; ctx.lineWidth = 2; ctx.stroke();
-    }
-    for (const o of S.obstacles) if (o.kind === 'rock') {
-      ctx.fillStyle = colors.rock; ctx.strokeStyle = colors['rock-edge']; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.ellipse(o.x, o.y, o.r, o.r * 0.78, o.r, 0, 7); ctx.fill(); ctx.stroke();
-    }
+    const ripples = new Path2D();
+    offsetLine(ripples, S.river.pts, S.river.hw * 0.45); offsetLine(ripples, S.river.pts, -S.river.hw * 0.35);
+    ctx.setLineDash([5, 28]); ctx.lineDashOffset = -now / 90;
+    ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1.2; ctx.stroke(ripples);
+    ctx.restore();
 
     // driveways from each building to its entrance
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (const b of buildings()) for (const id of doors(b)) {
       const en = S.nodes.get(id);
       ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = 9;
@@ -1445,40 +1852,59 @@ canvas.erasing { cursor: cell; }
       ctx.strokeStyle = colors.road; ctx.lineWidth = 6; ctx.stroke();
     }
 
-    const roads = new Path2D();
+    // roads by width (2, 4 or 6 lanes): pavements, kerbs, asphalt; bridges get a timber deck and railings
+    const roads = [new Path2D(), new Path2D(), new Path2D()], walks = [new Path2D(), new Path2D(), new Path2D()], decks = [new Path2D(), new Path2D(), new Path2D()];
+    const rails = new Path2D();
     for (const e of S.edges.values()) {
-      const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
-      roads.moveTo(a.x, a.y); roads.lineTo(b.x, b.y);
-    }
-    // bridge decks get a timber edge wider than the road
-    const decks = new Path2D();
-    for (const e of S.edges.values()) if (e.bridge) {
-      const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
-      decks.moveTo(a.x, a.y); decks.lineTo(b.x, b.y);
+      const a = S.nodes.get(e.a), b = S.nodes.get(e.b), i = e.lanes - 1;
+      for (const path of [roads[i], e.bridge ? decks[i] : walks[i]]) { path.moveTo(a.x, a.y); path.lineTo(b.x, b.y); }
+      if (e.bridge) {
+        const l = e.len || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l, d = ROAD_WS[i] / 2 + 4;
+        for (const side of [d, -d]) { rails.moveTo(a.x + nx * side, a.y + ny * side); rails.lineTo(b.x + nx * side, b.y + ny * side); }
+      }
     }
     ctx.lineCap = 'butt';
-    ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_W + 15; ctx.stroke(decks);
-    ctx.strokeStyle = colors.bridge; ctx.lineWidth = ROAD_W + 11; ctx.stroke(decks);
+    decks.forEach((path, i) => { ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_WS[i] + 15; ctx.stroke(path); });
+    decks.forEach((path, i) => { ctx.strokeStyle = colors.bridge; ctx.lineWidth = ROAD_WS[i] + 11; ctx.stroke(path); });
+    ctx.save(); ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = 1; ctx.stroke(rails);
+    ctx.setLineDash([1.4, 3.6]); ctx.lineWidth = 2.6; ctx.stroke(rails); ctx.restore();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_W + 3; ctx.stroke(roads);
-    ctx.strokeStyle = colors.road; ctx.lineWidth = ROAD_W; ctx.stroke(roads);
+    walks.forEach((path, i) => { ctx.strokeStyle = colors.sidewalk; ctx.lineWidth = ROAD_WS[i] + 8; ctx.stroke(path); });
+    roads.forEach((path, i) => { ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_WS[i] + 2.5; ctx.stroke(path); });
+    roads.forEach((path, i) => { ctx.strokeStyle = colors.road; ctx.lineWidth = ROAD_WS[i]; ctx.stroke(path); });
     // jammed stretches glow orange, then red
-    const busy = [new Path2D(), new Path2D()];
     for (const e of S.edges.values()) if (e.heat > 0.4) {
-      const a = S.nodes.get(e.a), b = S.nodes.get(e.b), path = busy[e.heat > 1.3 ? 1 : 0];
-      path.moveTo(a.x, a.y); path.lineTo(b.x, b.y);
+      const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
+      ctx.globalAlpha = e.heat > 1.3 ? 0.65 : 0.55; ctx.strokeStyle = e.heat > 1.3 ? colors.warn : colors.jam;
+      ctx.lineWidth = ROAD_WS[e.lanes - 1] - 4;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
-    ctx.lineWidth = ROAD_W - 4;
-    ctx.globalAlpha = 0.55; ctx.strokeStyle = colors.jam; ctx.stroke(busy[0]);
-    ctx.globalAlpha = 0.65; ctx.strokeStyle = colors.warn; ctx.stroke(busy[1]);
     ctx.globalAlpha = 1;
-    // white dashed centre line, drawn along whole stretches so the dashes flow round curves
-    const lanes = new Path2D();
-    for (const chain of roadChains()) chain.forEach((q, i) => i ? lanes.lineTo(q.x, q.y) : lanes.moveTo(q.x, q.y));
+    // markings along whole stretches so dashes flow round curves: a dashed centre on plain roads,
+    // a solid centre with dashed lane lines on boulevards and motorways; street lamps every ~45 m
+    const dashed = new Path2D(), solid = new Path2D(), lamps = [];
+    for (const chain of roadChains()) {
+      if (chain.lanes === 1) offsetLine(dashed, chain, 0);
+      else {
+        offsetLine(solid, chain, 0);
+        for (let k = 1; k < chain.lanes; k++) { offsetLine(dashed, chain, k * laneW(chain.lanes)); offsetLine(dashed, chain, -k * laneW(chain.lanes)); }
+      }
+      let run = 20, side = 1;
+      for (let i = 1; i < chain.length; i++) {
+        const a = chain[i - 1], b = chain[i], l = dist(a, b);
+        if ((run += l) < 45) continue;
+        run = 0; side = -side;
+        const d = (ROAD_WS[chain.lanes - 1] / 2 + 4) * side, nx = -(b.y - a.y) / (l || 1), ny = (b.x - a.x) / (l || 1);
+        if (!inRiver(b, 2)) lamps.push([b.x + nx * d, b.y + ny * d]);
+      }
+    }
     ctx.save();
-    ctx.setLineDash([7, 8]); ctx.lineCap = 'butt';
-    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.4; ctx.stroke(lanes);
+    ctx.lineCap = 'butt'; ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.lineWidth = 1.8; ctx.stroke(solid);
+    ctx.setLineDash([7, 8]); ctx.lineWidth = 1.4; ctx.stroke(dashed);
     ctx.restore();
+    ctx.fillStyle = '#5b605c';
+    for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 1.3, 0, 7); ctx.fill(); }
 
     // the road being drawn
     if (stroke && stroke.pts.length > 1) {
@@ -1491,29 +1917,18 @@ canvas.erasing { cursor: cell; }
       if (stroke.end) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(stroke.end.x, stroke.end.y, 10, 0, 7); ctx.stroke(); }
     }
 
-    // cars drive on the right-hand lane; cars from bigger homes are longer and trimmed in gold
+    // cars keep to their lane on the right
     const placed = [];
     for (const car of S.cars) {
       const a = S.nodes.get(car.path[car.i]), b = S.nodes.get(car.path[car.i + 1]);
       if (!a || !b) continue;
       const len = dist(a, b) || 1, t = Math.min(1, car.d / len);
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
-      const x = a.x + (b.x - a.x) * t - Math.sin(ang) * 3.6, y = a.y + (b.y - a.y) * t + Math.cos(ang) * 3.6;
-      const L = car.level, cl = [10, 11, 12, 12.5][L];
+      const lanes = edgeBetween(car.path[car.i], car.path[car.i + 1])?.lanes || 1, off = laneW(lanes) * (Math.min(car.lane, lanes - 1) + 0.5);
+      const x = a.x + (b.x - a.x) * t - Math.sin(ang) * off, y = a.y + (b.y - a.y) * t + Math.cos(ang) * off;
+      const cl = [10, 11, 12, 12.5][car.level];
       placed.push({ x, y, ang, cl });
-      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-      ctx.fillStyle = colors['c' + car.color]; rrect(-cl / 2, -3, cl, 6, 2); ctx.fill();
-      if (L >= 3) { ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.8; ctx.stroke(); }
-      if (L >= 1) { ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(-cl / 2 + 2, -2, cl * 0.4, 4); }
-      if (L >= 2) { ctx.fillStyle = colors.accent; ctx.fillRect(-cl / 2 + 1, -3, cl - 2, 0.9); ctx.fillRect(-cl / 2 + 1, 2.1, cl - 2, 0.9); }
-      ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(cl / 2 - 3.5, -2, 1.8, 4);
-      ctx.restore();
-    }
-
-    for (const o of S.obstacles) if (o.kind === 'tree') {
-      ctx.fillStyle = colors['tree-dark']; ctx.beginPath(); ctx.arc(o.x + 1, o.y + 1.5, o.r, 0, 7); ctx.fill();
-      ctx.fillStyle = colors.tree; ctx.beginPath(); ctx.arc(o.x, o.y, o.r - 1, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(o.x - o.r * 0.3, o.y - o.r * 0.3, o.r * 0.45, 0, 7); ctx.fill();
+      drawCar(x, y, ang, cl, colors['c' + car.color], car.level);
     }
 
     // land not opened yet is veiled, with a dashed boundary
@@ -1523,16 +1938,19 @@ canvas.erasing { cursor: cell; }
     ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = colors.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5 / cam.z * 1.5;
     ctx.strokeRect(R.x, R.y, R.w, R.h); ctx.restore();
 
-    // night: tint the land, then switch on headlights; buildings stay lit and readable
+    // night: tint the land, then light the lamps, headlights and homes; buildings stay readable
     const dark = darkness(S.t);
     if (dark > 0) {
       ctx.globalAlpha = 0.5 * dark; ctx.fillStyle = colors.night; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = colors.lamp;
+      ctx.globalAlpha = 0.16 * dark;
+      for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 10, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = dark;
+      for (const [lx, ly] of lamps) { ctx.beginPath(); ctx.arc(lx, ly, 1.4, 0, 7); ctx.fill(); }
       for (const c of placed) {
         ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.ang);
         const f = c.cl / 2;
         ctx.globalAlpha = 0.28 * dark; ctx.beginPath(); ctx.moveTo(f, -2.5); ctx.lineTo(f + 12, -6); ctx.lineTo(f + 12, 6); ctx.lineTo(f, 2.5); ctx.fill();
-        ctx.globalAlpha = dark; ctx.fillRect(f - 1, -2.6, 1.6, 1.6); ctx.fillRect(f - 1, 1, 1.6, 1.6);
         ctx.restore();
       }
       ctx.globalAlpha = 0.22 * dark;
@@ -1541,7 +1959,7 @@ canvas.erasing { cursor: cell; }
     }
 
     // entrances: a pulsing ring until something is connected
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+    const pulse = 0.5 + 0.5 * Math.sin(now / 260);
     for (const b of buildings()) for (const id of doors(b)) {
       const en = S.nodes.get(id);
       const linked = en.edges.size > 0;
@@ -1549,21 +1967,7 @@ canvas.erasing { cursor: cell; }
       ctx.beginPath(); ctx.arc(en.x, en.y, linked ? 3.5 : 5 + pulse * 1.5, 0, 7); ctx.fill(); ctx.stroke();
     }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const p of S.places) {
-      const s = p.r;
-      if (p.level >= 1) { ctx.fillStyle = 'rgba(0,0,0,.22)'; rrect(p.x - s + 3, p.y - s + 3, s * 2, s * 2, 7); ctx.fill(); }
-      ctx.fillStyle = colors['c' + p.color]; ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 2;
-      rrect(p.x - s, p.y - s, s * 2, s * 2, 6); ctx.fill(); ctx.stroke();
-      if (p.level >= 2) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; rrect(p.x - s + 3, p.y - s + 3, s * 2 - 6, s * 2 - 6, 4); ctx.stroke(); }
-      ctx.fillStyle = 'rgba(255,255,255,.92)';
-      ctx.font = `400 ${15 + p.level * 2}px Bungee, "Arial Black", sans-serif`;
-      ctx.fillText(p.name[0], p.x, p.y - (p.level < 2 ? 3 : 1));
-      if (p.level < PLACE_NEEDS.length) {
-        ctx.font = '700 7.5px "Atkinson Hyperlegible", system-ui, sans-serif';
-        ctx.fillText(`${p.got}/${PLACE_NEEDS[p.level]}`, p.x, p.y + s - 7);
-      }
-      label(p.name, p.x, p.dir[1] === -1 ? p.y + s + 9 : p.y - s - 8, 10);
-    }
+    for (const p of S.places) drawPlace(p, dark);
     for (const h of S.houses) {
       const s = h.r;
       if (h.warn != null) {
@@ -1573,21 +1977,7 @@ canvas.erasing { cursor: cell; }
         ctx.strokeStyle = colors.warn; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(h.x, h.y, s + 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
       }
-      // taller homes cast a longer shadow
-      if (h.level >= 2) { ctx.fillStyle = 'rgba(0,0,0,.25)'; rrect(h.x - s + h.level + 1, h.y - s + h.level + 1, s * 2, s * 2, 3); ctx.fill(); }
-      ctx.fillStyle = colors.building; ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.6;
-      rrect(h.x - s, h.y - s, s * 2, s * 2, 3); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = colors['c' + h.color];
-      rrect(h.x - s + 3, h.y - s + 3, s * 2 - 6, s * 2 - 6, 2); ctx.fill();
-      // window grid: one lamp for a house, 2×2 up to 4×4 for a tower
-      const n = h.level + 1, inner = s * 2 - 6, cell = inner / n;
-      if (h.level > 0 || dark > 0) {
-        ctx.fillStyle = dark > 0.3 ? colors.lamp : 'rgba(255,255,255,.7)';
-        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-          const w = cell * 0.45;
-          ctx.fillRect(h.x - s + 3 + cell * (i + 0.5) - w / 2, h.y - s + 3 + cell * (j + 0.5) - w / 2, w, w);
-        }
-      }
+      drawHome(h, dark);
       // trips waiting to leave, as dots above the roof
       const k = Math.min(h.waiting, 8);
       for (let q = 0; q < k; q++) {
@@ -1602,7 +1992,7 @@ canvas.erasing { cursor: cell; }
       }
     }
 
-    // asphalt tag above the finger while drawing, eraser ring while erasing
+    // asphalt tag above the finger while drawing, tool ring while upgrading or bulldozing
     if (stroke && stroke.cursor) {
       const c = stroke.cursor;
       const text = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.cost)} kg`;
@@ -1612,9 +2002,9 @@ canvas.erasing { cursor: cell; }
       ctx.fillStyle = stroke.out ? colors.warn : colors.fg; rrect(tx - w / 2, ty - hgt / 2, w, hgt, hgt / 2); ctx.fill();
       ctx.fillStyle = stroke.out ? '#fff' : colors.ground; ctx.fillText(text, tx, ty + 1);
     }
-    if (mode === 'erase' && cursor && running) {
-      ctx.strokeStyle = colors.warn; ctx.lineWidth = 2 / cam.z; ctx.setLineDash([4 / cam.z, 3 / cam.z]);
-      ctx.beginPath(); ctx.arc(cursor.x, cursor.y, pxToWorld(18), 0, 7); ctx.stroke(); ctx.setLineDash([]);
+    if (mode !== 'draw' && cursor && running) {
+      ctx.strokeStyle = mode === 'up' ? colors.accent : colors.warn; ctx.lineWidth = 2 / cam.z; ctx.setLineDash([4 / cam.z, 3 / cam.z]);
+      ctx.beginPath(); ctx.arc(cursor.x, cursor.y, pxToWorld(mode === 'up' ? 16 : 18), 0, 7); ctx.stroke(); ctx.setLineDash([]);
     }
   }
 
@@ -1639,7 +2029,9 @@ canvas.erasing { cursor: cell; }
     hudTimer -= dt;
     if (hudTimer <= 0) { updateHud(); hudTimer = 0.25; }
   }
+  let fps = 60;
   function frame(now) {
+    if (now > lastFrame) fps += (1000 / (now - lastFrame) - fps) * 0.05;   // smoothed frame rate for the pause menu
     const dt = Math.min(0.05, (now - lastFrame) / 1000 || 0);
     lastFrame = now;
     if (running && !paused && !frozen) {
@@ -1658,7 +2050,7 @@ canvas.erasing { cursor: cell; }
     cancelGesture();
     Sound.setPlaying(!v);
     $('paused').hidden = !v;
-    if (v) $('resumeBtn').focus();
+    if (v) { $('fpsLine').textContent = `Görüntü hızı: ${Math.round(fps)} FPS`; $('resumeBtn').focus(); }
   }
   $('pauseBtn').onclick = () => setPaused(!paused);
   $('resumeBtn').onclick = () => setPaused(false);
@@ -1704,7 +2096,7 @@ canvas.erasing { cursor: cell; }
 
   // used by automated tests
   window.__trafik = {
-    get S() { return S; }, update,
+    get S() { return S; }, update, draw,
     get cam() { return cam; },
     get world() { return { W, H }; },
     fit: () => fitView(S.region, false),
