@@ -28,6 +28,11 @@
   --preview: rgba(74, 79, 76, .55);
   --preview-bad: rgba(216, 64, 47, .55);
   --shadow: rgba(0, 0, 0, .3);
+  --water: #7fb6d6; --water-edge: #5d93b5;
+  --tree: #5f9a4e; --tree-dark: #3f7134; --rock: #a8a59b; --rock-edge: #77746b;
+  --bridge: #b9a88a;        /* timber railing under bridge decks */
+  --night: #0c1633;         /* night tint laid over the map */
+  --lamp: #ffd77a;          /* lit windows and headlights */
   --c1: #2f74c0; --c2: #e8862a; --c3: #3c9a4f; --c4: #8a55c4; --c5: #18a3a3; --c6: #d1508f;
   --display: "Bungee", "Arial Black", Impact, sans-serif;
   --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
@@ -38,7 +43,7 @@
     --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fg: #e8ebe6; --muted: #9aa59b;
     --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
     --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
-    --shadow: rgba(0, 0, 0, .6);
+    --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
     color-scheme: dark;
   }
 }
@@ -46,7 +51,7 @@
   --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fg: #e8ebe6; --muted: #9aa59b;
   --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
   --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
-  --shadow: rgba(0, 0, 0, .6);
+  --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
   color-scheme: dark;
 }
 
@@ -80,7 +85,7 @@ canvas.erasing { cursor: cell; }
   position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; pointer-events: none;
   background: var(--panel); color: var(--fg); border: 1px solid var(--edge); border-radius: 999px;
   padding: 6px 14px; font-weight: 700; font-size: .85rem; white-space: nowrap; box-shadow: 0 6px 16px -8px var(--shadow);
-  max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis;
+  max-width: calc(100% - 130px); overflow: hidden; text-overflow: ellipsis;
 }
 .alarm {
   position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 4; pointer-events: none;
@@ -89,7 +94,7 @@ canvas.erasing { cursor: cell; }
 }
 .alarm b { font: 400 1.2rem var(--display); font-variant-numeric: tabular-nums; }
 
-.toolbar { display: grid; grid-template-columns: 1fr 1fr auto auto auto; gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tool {
   font: 700 1rem var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
   border-bottom-width: 3px; border-radius: 10px; padding: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -102,6 +107,11 @@ canvas.erasing { cursor: cell; }
 .tool.sound .off { display: none; }
 .tool.sound[aria-pressed="false"] .off { display: inline; }
 .tool svg { width: 20px; height: 20px; flex: none; }
+/* pause, speed and undo stack in the map's top-right corner */
+.side { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+.tool.mini { width: 44px; height: 44px; padding: 0; font: 400 .95rem var(--display); box-shadow: 0 4px 10px -6px var(--shadow); }
+.tool.mini:disabled { opacity: .45; cursor: default; }
+.sound-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tool:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .overlay {
@@ -141,6 +151,15 @@ canvas.erasing { cursor: cell; }
   <div class="stage" id="stage">
     <canvas id="map" aria-label="Şehir haritası. Parmağınla yol çiz."></canvas>
     <div class="toast" id="toast" hidden></div>
+    <div class="side">
+      <button class="tool mini" id="pauseBtn" type="button" aria-label="Duraklat ve ses ayarları">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="tool mini" id="speedBtn" type="button" aria-label="Oyun hızı">1×</button>
+      <button class="tool mini" id="undoBtn" type="button" aria-label="Son yolu geri al" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+      </button>
+    </div>
     <div class="alarm" id="alarm" hidden><span id="alarmText">Bir evde trafik sıkıştı</span><b id="alarmTime">20</b></div>
 
     <div class="overlay" id="intro">
@@ -151,7 +170,8 @@ canvas.erasing { cursor: cell; }
           <li>Parmağınla sürükleyerek yol çiz. Yolun ucunu bir binanın beyaz giriş noktasına götürünce oraya bağlanır.</li>
           <li>Yollar kesiştiği yerde kavşak olur.</li>
           <li>Her yol asfalt harcar. Yeni mekan açıldıkça asfalt gelir.</li>
-          <li>Silgiyle dokunduğun yolu kaldırırsın, asfaltı geri alırsın.</li>
+          <li>Nehrin üstünden geçen yol kendiliğinden köprü olur ama üç kat asfalt harcar. Ağaçlardan, kayalardan ve göllerden yol geçmez.</li>
+          <li>Silgiyle dokunduğun yolu kaldırırsın, geri al düğmesi son yolu kaldırır. İkisinde de asfalt geri gelir.</li>
           <li>Bir evde araba birikirse uyarı çıkar. 20 saniye içinde çözmezsen oyun biter.</li>
         </ul>
         <button class="btn" id="startBtn" type="button">Başla</button>
@@ -161,6 +181,14 @@ canvas.erasing { cursor: cell; }
     <div class="overlay" id="paused" hidden>
       <div class="card">
         <h2>Duraklatıldı</h2>
+        <div class="sound-row">
+          <button class="tool sound" id="musicBtn" type="button" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/><path class="off" d="M3 3l18 18"/></svg>Müzik
+          </button>
+          <button class="tool sound" id="sfxBtn" type="button" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/><path class="off" d="M3 3l18 18"/></svg>Efektler
+          </button>
+        </div>
         <button class="btn" id="resumeBtn" type="button">Devam et</button>
       </div>
     </div>
@@ -187,15 +215,6 @@ canvas.erasing { cursor: cell; }
     <button class="tool" id="eraseBtn" type="button" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H7z"/><path d="M9 11l5 5"/></svg>Silgi
     </button>
-    <button class="tool sound" id="musicBtn" type="button" aria-pressed="true" aria-label="Müzik">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/><path class="off" d="M3 3l18 18"/></svg>
-    </button>
-    <button class="tool sound" id="sfxBtn" type="button" aria-pressed="true" aria-label="Efekt sesleri">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/><path class="off" d="M3 3l18 18"/></svg>
-    </button>
-    <button class="tool" id="pauseBtn" type="button" aria-label="Duraklat">
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-    </button>
   </div>
 </div>
 
@@ -205,7 +224,10 @@ canvas.erasing { cursor: cell; }
   const SHORT_SIDE = 480;          // world units on the screen's short side (1 unit = 1 m of road)
   const ROAD_W = 15;
   const KG_PER_M = 1;              // asphalt cost per metre of road
-  const START_ASPHALT = 800;
+  const START_ASPHALT = 1300;
+  const BRIDGE_COST = 3;           // a metre of bridge costs as much as this many metres of road
+  const SUPPLY_EVERY = 60, SUPPLY_KG = 200;
+  const DAY = 240;                 // seconds for a full day and night
   const SPEED = 52;                // car speed, m/s of game time
   const GAP = 13;                  // following distance between cars
   const JAM_ON = 6, JAM_OFF = 3, WARN_SECONDS = 20;
@@ -310,7 +332,7 @@ canvas.erasing { cursor: cell; }
       nextBar = Math.max(nextBar, ac.currentTime + 0.1);
       tick();
       timer = setInterval(tick, 400);
-      fadeMusic(1);
+      fadeMusic(0.7);
     }
     function stopMusic() {
       if (timer) { clearInterval(timer); timer = null; }
@@ -387,7 +409,7 @@ canvas.erasing { cursor: cell; }
         const now = ac.currentTime;
         if (lastMove) {
           const speed = px / Math.max(0.008, now - lastMove);          // screen px per second
-          const level = (0.35 + 0.65 * Math.min(1, speed / 500)) * 0.6;
+          const level = (0.35 + 0.65 * Math.min(1, speed / 500)) * 0.3;
           gravel.g.gain.cancelScheduledValues(now);
           gravel.g.gain.setTargetAtTime(level, now, 0.03);
           gravel.g.gain.setTargetAtTime(0, now + 0.09, 0.07);          // fades if the finger stops
@@ -445,9 +467,11 @@ canvas.erasing { cursor: cell; }
       t: 0, asphalt: START_ASPHALT, score: 0,
       nodes: new Map(), edges: new Map(), nid: 1, eid: 1,
       houses: [], places: [], cars: [],
-      nextHouse: 14, nextPlace: 55, placeIndex: 0,
+      nextHouse: 14, nextPlace: 55, nextSupply: SUPPLY_EVERY, placeIndex: 0,
+      history: [],                // edge ids of recent roads, newest last, for undo
     };
-    const p = addPlace({ x: W * 0.5 + rand(-40, 40), y: H * 0.42 + rand(-30, 30) });
+    makeNature();
+    const p = addPlace({ x: W / 2, y: H / 2 }, 0, 150);
     addHouse(p.color, p);
     addHouse(p.color, p);
     updateHud();
@@ -468,7 +492,8 @@ canvas.erasing { cursor: cell; }
   }
   function addEdge(a, b) {
     if (a === b || edgeBetween(a.id, b.id)) return null;
-    const e = { id: S.eid++, a: a.id, b: b.id, len: dist(a, b) };
+    const len = dist(a, b), bridge = inRiver({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    const e = { id: S.eid++, a: a.id, b: b.id, len, bridge, cost: len * KG_PER_M * (bridge ? BRIDGE_COST : 1) };
     S.edges.set(e.id, e); a.edges.add(e.id); b.edges.add(e.id);
     return e;
   }
@@ -484,7 +509,8 @@ canvas.erasing { cursor: cell; }
     if (dist(b, { x, y }) < 7) return b;
     dropEdge(e);
     const n = addNode(x, y);
-    addEdge(a, n); addEdge(n, b);
+    const e1 = addEdge(a, n), e2 = addEdge(n, b);
+    for (const h of S.history) if (h.delete(e.id)) { h.add(e1.id); h.add(e2.id); }
     for (const car of S.cars) {
       for (let k = 0; k < car.path.length - 1; k++) {
         const u = car.path[k], v = car.path[k + 1];
@@ -525,19 +551,60 @@ canvas.erasing { cursor: cell; }
     return retry ? resolveAnchor(anchorAt(an, 9), false) : null;
   }
 
+  // ---------- Nature ----------
+  // A river crosses the map (roads over it become bridges); lakes, groves and rocks block roads.
+  function makeNature() {
+    const across = W <= H, long = across ? H : W, short = across ? W : H;
+    let c = long * rand(0.3, 0.7), drift = 0;
+    const pts = [];
+    for (let k = -24; k <= short + 24; k += 24) {
+      drift = (drift + rand(-9, 9)) * 0.85;
+      c = Math.max(long * 0.2, Math.min(long * 0.8, c + drift));
+      pts.push(across ? { x: k, y: c } : { x: c, y: k });
+    }
+    S.river = { pts, hw: 13 };
+    S.lakes = [];
+    for (let tries = 0; tries < 60 && S.lakes.length < (Math.random() < 0.5 ? 1 : 2); tries++) {
+      const l = { x: rand(70, W - 70), y: rand(70, H - 70), R: rand(30, 48), p1: rand(0, 6), p2: rand(0, 6) };
+      if (inRiver(l, l.R * 1.25 + 30) || S.lakes.some(o => dist(o, l) < o.R + l.R + 80)) continue;
+      S.lakes.push(l);
+    }
+    S.obstacles = [];
+    const scatter = (groups, count, spread, rMin, rMax, kind) => {
+      for (let g = 0; g < groups; g++) {
+        const cx = rand(20, W - 20), cy = rand(20, H - 20), n = Math.round(rand(...count));
+        for (let k = 0; k < n; k++) {
+          const o = { x: cx + rand(-spread, spread), y: cy + rand(-spread, spread), r: rand(rMin, rMax), kind };
+          if (!inRiver(o, o.r + 4) && !inLake(o, o.r + 4)) S.obstacles.push(o);
+        }
+      }
+    };
+    scatter(Math.round(rand(7, 10)), [5, 11], 28, 6, 9, 'tree');
+    scatter(Math.round(rand(5, 8)), [2, 4], 13, 4, 8, 'rock');
+  }
+  function inRiver(p, pad = 0) {
+    const r = S.river;
+    for (let i = 1; i < r.pts.length; i++) if (nearestOnSeg(p, r.pts[i - 1], r.pts[i]).d < r.hw + pad) return true;
+    return false;
+  }
+  const lakeEdge = (l, ang) => l.R * (1 + 0.15 * Math.sin(3 * ang + l.p1) + 0.08 * Math.sin(5 * ang + l.p2));
+  const inLake = (p, pad = 0) => S.lakes.some(l => dist(l, p) < lakeEdge(l, Math.atan2(p.y - l.y, p.x - l.x)) + pad);
+  const blocked = (p, pad) => inLake(p, pad) || S.obstacles.some(o => dist(o, p) < o.r + pad);
+
   // ---------- Buildings ----------
   function buildings() { return [...S.houses, ...S.places]; }
-  function freeSpot(r, near) {
+  function freeSpot(r, near, dMin = 95, dMax = 210) {
     const margin = 26 + r;
     for (let tries = 0; tries < 400; tries++) {
       let x, y;
       if (near && tries < 300) {
-        const ang = rand(0, Math.PI * 2), d = rand(95, 210);
+        const ang = rand(0, Math.PI * 2), d = rand(dMin, dMax);
         x = near.x + Math.cos(ang) * d; y = near.y + Math.sin(ang) * d;
       } else { x = rand(margin, W - margin); y = rand(margin, H - margin); }
       if (x < margin || y < margin || x > W - margin || y > H - margin) continue;
       const p = { x, y };
       if (buildings().some(b => dist(b, p) < b.r + r + 58)) continue;
+      if (blocked(p, r + 12) || inRiver(p, r + 16)) continue;
       let clear = true;
       for (const e of S.edges.values()) {
         if (nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r + 24) { clear = false; break; }
@@ -550,14 +617,15 @@ canvas.erasing { cursor: cell; }
       for (const [dx, dy] of dirs) {
         const ent = { x: x + dx * (r + 11), y: y + dy * (r + 11) };
         if (ent.x < 10 || ent.y < 10 || ent.x > W - 10 || ent.y > H - 10) continue;
+        if (blocked(ent, 9) || inRiver(ent, 10)) continue;
         return { x, y, dir: [dx, dy], ent };
       }
     }
     return null;
   }
-  function addPlace(at) {
+  function addPlace(near, dMin, dMax) {
     const def = PLACES[S.placeIndex % PLACES.length];
-    const spot = at ? { x: at.x, y: at.y, dir: [0, 1], ent: { x: at.x, y: at.y + PLACE_R + 11 } } : freeSpot(PLACE_R);
+    const spot = freeSpot(PLACE_R, near, dMin, dMax);
     if (!spot) return null;
     S.placeIndex++;
     const e = addNode(spot.ent.x, spot.ent.y, true);
@@ -574,12 +642,19 @@ canvas.erasing { cursor: cell; }
     return h;
   }
   function growTown() {
+    if (S.t >= S.nextSupply) {
+      S.nextSupply += SUPPLY_EVERY;
+      S.asphalt += SUPPLY_KG;
+      bump();
+      Sound.asphalt();
+      toast(`Haftalık asfalt +${SUPPLY_KG} kg`);
+    }
     if (S.t >= S.nextPlace) {
       S.nextPlace = S.t + 70;
       const p = addPlace();
       if (p) {
         // bigger towns get bigger deliveries
-        const grant = Math.round((250 + 60 * S.places.length) / 10) * 10;
+        const grant = Math.round((400 + 100 * S.places.length) / 10) * 10;
         S.asphalt += grant;
         bump();
         Sound.place();
@@ -783,7 +858,7 @@ canvas.erasing { cursor: cell; }
 
   function strokeStart(p) {
     const an = anchorAt(p, pxToWorld(26));
-    stroke = { pts: [an ? { x: an.x, y: an.y } : p], start: an, length: 0, out: false, bad: false, end: null, cursor: p };
+    stroke = { pts: [an ? { x: an.x, y: an.y } : p], start: an, cost: 0, out: false, bad: false, end: null, cursor: p };
     Sound.drawStart();
   }
   function strokeMove(p) {
@@ -796,9 +871,10 @@ canvas.erasing { cursor: cell; }
     while (d >= 4) {
       const step = Math.min(6, d);
       const q = { x: last.x + (p.x - last.x) * step / d, y: last.y + (p.y - last.y) * step / d };
-      if ((stroke.length + step) * KG_PER_M > S.asphalt) { stroke.out = true; Sound.drawStop(false); Sound.denied(); break; }
-      if (!inBounds(q) || hitsBuilding(q)) { stroke.bad = true; break; }   // wait until the finger comes back around
-      stroke.pts.push(q); stroke.length += step; last = q; d = dist(last, p);
+      const kg = step * KG_PER_M * (inRiver(q) ? BRIDGE_COST : 1);
+      if (stroke.cost + kg > S.asphalt) { stroke.out = true; Sound.drawStop(false); Sound.denied(); break; }
+      if (!inBounds(q) || hitsBuilding(q) || blocked(q, 6)) { stroke.bad = true; break; }   // wait until the finger comes back around
+      stroke.pts.push(q); stroke.cost += kg; last = q; d = dist(last, p);
     }
     const an = anchorAt(stroke.pts[stroke.pts.length - 1], pxToWorld(26));
     stroke.end = an && !(stroke.start && an.node && stroke.start.node === an.node) && stroke.pts.length > 2 ? an : null;
@@ -829,13 +905,17 @@ canvas.erasing { cursor: cell; }
     if (pts.length < 2 || total < 10) { Sound.drawStop(false); return; }
     const line = smooth(pts);
     let cost = 0;
-    for (let i = 1; i < line.length; i++) cost += dist(line[i - 1], line[i]);
-    cost = Math.ceil(cost * KG_PER_M);
+    for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1], b = line[i];
+      cost += dist(a, b) * KG_PER_M * (inRiver({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }) ? BRIDGE_COST : 1);
+    }
+    cost = Math.ceil(cost);
     if (cost > S.asphalt) { Sound.drawStop(false); Sound.denied(); toast('Bu yol için asfalt yetmiyor'); return; }
     Sound.drawStop(true);
 
     let prev = resolveAnchor(s.start) || addNode(line[0].x, line[0].y);
     const endNode = s.end ? resolveAnchor(s.end) : null;
+    const added = new Set();
     for (let i = 1; i < line.length; i++) {
       const a = { x: prev.x, y: prev.y }, b = line[i];
       const lastPiece = i === line.length - 1 && endNode;
@@ -851,30 +931,44 @@ canvas.erasing { cursor: cell; }
       for (const h of hits) {
         if (!S.edges.has(h.e.id)) continue;
         const X = splitEdge(h.e, h.x, h.y);
-        if (X !== prev) { addEdge(prev, X); prev = X; }
+        if (X !== prev) { const e = addEdge(prev, X); if (e) added.add(e.id); prev = X; }
       }
       const target = lastPiece ? endNode : addNode(b.x, b.y);
-      if (target !== prev) { addEdge(prev, target); prev = target; }
+      if (target !== prev) { const e = addEdge(prev, target); if (e) added.add(e.id); prev = target; }
     }
+    S.history.push(added);
+    if (S.history.length > 20) S.history.shift();
     S.asphalt -= cost;
     updateHud();
   }
 
-  function eraseAt(p) {
-    const r = pxToWorld(18);
+  // Remove road pieces and hand their asphalt back. Returns the refund in kg.
+  function removeEdges(list) {
     let refund = 0;
-    for (const e of [...S.edges.values()]) {
-      if (nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r) { refund += e.len; dropEdge(e); }
-    }
-    if (!refund) return;
+    for (const e of list) { refund += e.cost; dropEdge(e); }
+    if (!list.length) return 0;
     for (const n of [...S.nodes.values()]) if (!n.fixed && n.edges.size === 0) S.nodes.delete(n.id);
-    S.asphalt += Math.round(refund * KG_PER_M);
+    refund = Math.round(refund);
+    S.asphalt += refund;
     // cars on a removed piece of road go back home and try again
     const keep = [];
     for (const car of S.cars) { if (segLen(car, car.i) == null) returnTrip(car); else keep.push(car); }
     S.cars = keep;
     updateHud();
+    return refund;
   }
+  function eraseAt(p) {
+    const r = pxToWorld(18);
+    removeEdges([...S.edges.values()].filter(e => nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r));
+  }
+  function undo() {
+    while (S.history.length) {
+      const list = [...S.history.pop()].map(id => S.edges.get(id)).filter(Boolean);
+      if (list.length) { toast(`Yol geri alındı  +${removeEdges(list)} kg`); return; }
+    }
+    updateHud();
+  }
+  $('undoBtn').onclick = () => { if (running && !paused) undo(); };
   let eraseLast = null;
   function eraseStroke(p) {
     if (eraseLast) {
@@ -931,6 +1025,7 @@ canvas.erasing { cursor: cell; }
     $('asphalt').textContent = `${Math.floor(S.asphalt)} kg`;
     $('score').textContent = S.score;
     $('clock').textContent = fmtTime(S.t);
+    $('undoBtn').disabled = !S.history.length;
   }
   function bump() { const b = $('asphaltBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   let toastTimer;
@@ -942,7 +1037,8 @@ canvas.erasing { cursor: cell; }
   // ---------- Rendering ----------
   function readColors() {
     const cs = getComputedStyle(document.documentElement);
-    for (const n of ['ground', 'ground-mark', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'preview', 'preview-bad', 'fg', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6']) {
+    for (const n of ['ground', 'ground-mark', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'preview', 'preview-bad', 'fg', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6',
+      'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp']) {
       colors[n] = cs.getPropertyValue('--' + n).trim();
     }
   }
@@ -964,6 +1060,30 @@ canvas.erasing { cursor: cell; }
   }
   window.addEventListener('resize', fit);
 
+  // 0 by day, 1 at night: day for half the cycle, then dusk, night and dawn
+  function darkness(t) {
+    const p = (t % DAY) / DAY;
+    return p < 0.5 ? 0 : p < 0.6 ? (p - 0.5) / 0.1 : p < 0.9 ? 1 : 1 - (p - 0.9) / 0.1;
+  }
+  // Roads as continuous stretches between junctions and dead ends.
+  function roadChains() {
+    const seen = new Set(), chains = [];
+    const walk = (node, e) => {
+      const pts = [node];
+      while (e && !seen.has(e.id)) {
+        seen.add(e.id);
+        node = S.nodes.get(e.a === node.id ? e.b : e.a);
+        pts.push(node);
+        if (node.edges.size !== 2) break;
+        e = [...node.edges].map(id => S.edges.get(id)).find(x => !seen.has(x.id));
+      }
+      return pts;
+    };
+    for (const n of S.nodes.values()) if (n.edges.size !== 2) for (const id of n.edges) if (!seen.has(id)) chains.push(walk(n, S.edges.get(id)));
+    for (const e of S.edges.values()) if (!seen.has(e.id)) chains.push(walk(S.nodes.get(e.a), e));   // closed loops
+    return chains;
+  }
+
   function rrect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -979,8 +1099,27 @@ canvas.erasing { cursor: cell; }
     ctx.fillStyle = colors['ground-mark'];
     for (let x = 30; x < W; x += 40) for (let y = 30; y < H; y += 40) ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
 
-    // driveways from each building to its entrance
+    // water: river then lakes, each with a darker bank
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const river = new Path2D();
+    S.river.pts.forEach((q, i) => i ? river.lineTo(q.x, q.y) : river.moveTo(q.x, q.y));
+    ctx.strokeStyle = colors['water-edge']; ctx.lineWidth = S.river.hw * 2 + 4; ctx.stroke(river);
+    ctx.strokeStyle = colors.water; ctx.lineWidth = S.river.hw * 2; ctx.stroke(river);
+    for (const l of S.lakes) {
+      ctx.beginPath();
+      for (let k = 0; k <= 48; k++) {
+        const a = k / 48 * Math.PI * 2, r = lakeEdge(l, a);
+        ctx.lineTo(l.x + Math.cos(a) * r, l.y + Math.sin(a) * r);
+      }
+      ctx.fillStyle = colors.water; ctx.fill();
+      ctx.strokeStyle = colors['water-edge']; ctx.lineWidth = 2; ctx.stroke();
+    }
+    for (const o of S.obstacles) if (o.kind === 'rock') {
+      ctx.fillStyle = colors.rock; ctx.strokeStyle = colors['rock-edge']; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(o.x, o.y, o.r, o.r * 0.78, o.r, 0, 7); ctx.fill(); ctx.stroke();
+    }
+
+    // driveways from each building to its entrance
     for (const b of buildings()) {
       const en = S.nodes.get(b.entrance);
       ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = 9;
@@ -994,8 +1133,25 @@ canvas.erasing { cursor: cell; }
       const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
       roads.moveTo(a.x, a.y); roads.lineTo(b.x, b.y);
     }
+    // bridge decks get a timber edge wider than the road
+    const decks = new Path2D();
+    for (const e of S.edges.values()) if (e.bridge) {
+      const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
+      decks.moveTo(a.x, a.y); decks.lineTo(b.x, b.y);
+    }
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_W + 15; ctx.stroke(decks);
+    ctx.strokeStyle = colors.bridge; ctx.lineWidth = ROAD_W + 11; ctx.stroke(decks);
+    ctx.lineCap = 'round';
     ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_W + 3; ctx.stroke(roads);
     ctx.strokeStyle = colors.road; ctx.lineWidth = ROAD_W; ctx.stroke(roads);
+    // white dashed centre line, drawn along whole stretches so the dashes flow round curves
+    const lanes = new Path2D();
+    for (const chain of roadChains()) chain.forEach((q, i) => i ? lanes.lineTo(q.x, q.y) : lanes.moveTo(q.x, q.y));
+    ctx.save();
+    ctx.setLineDash([7, 8]); ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.4; ctx.stroke(lanes);
+    ctx.restore();
     ctx.fillStyle = colors['road-line']; ctx.globalAlpha = .4;
     for (const n of S.nodes.values()) if (isJunction(n) && !n.fixed) { ctx.beginPath(); ctx.arc(n.x, n.y, 3, 0, 7); ctx.fill(); }
     ctx.globalAlpha = 1;
@@ -1012,16 +1168,40 @@ canvas.erasing { cursor: cell; }
     }
 
     // cars drive on the right-hand lane
+    const placed = [];
     for (const car of S.cars) {
       const a = S.nodes.get(car.path[car.i]), b = S.nodes.get(car.path[car.i + 1]);
       if (!a || !b) continue;
       const len = dist(a, b) || 1, t = Math.min(1, car.d / len);
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
       const x = a.x + (b.x - a.x) * t - Math.sin(ang) * 3.6, y = a.y + (b.y - a.y) * t + Math.cos(ang) * 3.6;
+      placed.push({ x, y, ang });
       ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
       ctx.fillStyle = colors['c' + car.color]; rrect(-5, -3, 10, 6, 2); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(1.5, -2, 1.8, 4);
       ctx.restore();
+    }
+
+    for (const o of S.obstacles) if (o.kind === 'tree') {
+      ctx.fillStyle = colors['tree-dark']; ctx.beginPath(); ctx.arc(o.x + 1, o.y + 1.5, o.r, 0, 7); ctx.fill();
+      ctx.fillStyle = colors.tree; ctx.beginPath(); ctx.arc(o.x, o.y, o.r - 1, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(o.x - o.r * 0.3, o.y - o.r * 0.3, o.r * 0.45, 0, 7); ctx.fill();
+    }
+
+    // night: tint the land, then switch on headlights; buildings stay lit and readable
+    const dark = darkness(S.t);
+    if (dark > 0) {
+      ctx.globalAlpha = 0.5 * dark; ctx.fillStyle = colors.night; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = colors.lamp;
+      for (const c of placed) {
+        ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.ang);
+        ctx.globalAlpha = 0.28 * dark; ctx.beginPath(); ctx.moveTo(5, -2.5); ctx.lineTo(17, -6); ctx.lineTo(17, 6); ctx.lineTo(5, 2.5); ctx.fill();
+        ctx.globalAlpha = dark; ctx.fillRect(4, -2.6, 1.6, 1.6); ctx.fillRect(4, 1, 1.6, 1.6);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 0.22 * dark;
+      for (const b of buildings()) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 9, 0, 7); ctx.fill(); }
+      ctx.globalAlpha = 1;
     }
 
     // entrances: a pulsing ring until something is connected
@@ -1057,6 +1237,7 @@ canvas.erasing { cursor: cell; }
       rrect(h.x - s, h.y - s, s * 2, s * 2, 3); ctx.fill(); ctx.stroke();
       ctx.fillStyle = colors['c' + h.color];
       rrect(h.x - s + 3, h.y - s + 3, s * 2 - 6, s * 2 - 6, 2); ctx.fill();
+      if (dark > 0) { ctx.globalAlpha = dark; ctx.fillStyle = colors.lamp; ctx.fillRect(h.x - 2.5, h.y - 2.5, 5, 5); ctx.globalAlpha = 1; }
       // trips waiting to leave, as dots above the roof
       const n = Math.min(h.waiting, 8);
       for (let k = 0; k < n; k++) {
@@ -1068,7 +1249,7 @@ canvas.erasing { cursor: cell; }
     // asphalt tag above the finger while drawing, eraser ring while erasing
     if (stroke && stroke.cursor) {
       const c = stroke.cursor;
-      const label = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.length * KG_PER_M)} kg`;
+      const label = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.cost)} kg`;
       ctx.font = '700 12px "Atkinson Hyperlegible", system-ui, sans-serif';
       const w = ctx.measureText(label).width + 14;
       const tx = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, c.x)), ty = Math.max(14, c.y - 46 / scale);
@@ -1082,7 +1263,9 @@ canvas.erasing { cursor: cell; }
   }
 
   // ---------- Loop ----------
-  let lastFrame = 0, hudTimer = 0;
+  let lastFrame = 0, hudTimer = 0, speed = 1;
+  function setSpeed(v) { speed = v; $('speedBtn').textContent = `${v}×`; }
+  $('speedBtn').onclick = () => setSpeed(speed === 1 ? 2 : 1);
   function update(dt) {
     S.t += dt;
     growTown();
@@ -1097,7 +1280,7 @@ canvas.erasing { cursor: cell; }
     lastFrame = now;
     if (running && !paused) {
       // small fixed steps keep car spacing steady on slow phones
-      let left = dt;
+      let left = dt * speed;
       while (left > 1e-6 && running) { const h = Math.min(left, 1 / 60); update(h); left -= h; }
     }
     draw();
@@ -1120,19 +1303,20 @@ canvas.erasing { cursor: cell; }
   function start() {
     newGame();
     setMode('draw');
+    setSpeed(1);
     running = true; paused = false;
     $('intro').hidden = true; $('over').hidden = true; $('paused').hidden = true; $('alarm').hidden = true;
     Sound.unlock();
     Sound.setPlaying(true);
-    toast('Evleri mavi Market’in girişine bağla');
+    toast('Evleri Market’e bağla');
   }
 
   function showSound() {
     $('musicBtn').setAttribute('aria-pressed', Sound.prefs.music);
     $('sfxBtn').setAttribute('aria-pressed', Sound.prefs.sfx);
   }
-  $('musicBtn').onclick = () => { Sound.toggleMusic(); showSound(); toast(Sound.prefs.music ? 'Müzik açık' : 'Müzik kapalı'); };
-  $('sfxBtn').onclick = () => { Sound.toggleSfx(); showSound(); toast(Sound.prefs.sfx ? 'Efekt sesleri açık' : 'Efekt sesleri kapalı'); };
+  $('musicBtn').onclick = () => { Sound.toggleMusic(); showSound(); };
+  $('sfxBtn').onclick = () => { Sound.toggleSfx(); showSound(); };
   showSound();
   $('startBtn').onclick = start;
   $('againBtn').onclick = start;
