@@ -89,13 +89,18 @@ canvas.erasing { cursor: cell; }
 }
 .alarm b { font: 400 1.2rem var(--display); font-variant-numeric: tabular-nums; }
 
-.toolbar { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.toolbar { display: grid; grid-template-columns: 1fr 1fr auto auto auto; gap: 6px; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .tool {
   font: 700 1rem var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--edge);
-  border-bottom-width: 3px; border-radius: 10px; padding: 12px 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
-  -webkit-tap-highlight-color: transparent;
+  border-bottom-width: 3px; border-radius: 10px; padding: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  -webkit-tap-highlight-color: transparent; min-width: 0;
 }
 .tool[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+/* sound switches: on keeps the normal look, off is greyed with a slash through the icon */
+.tool.sound[aria-pressed] { background: var(--panel); color: var(--fg); border-color: var(--edge); }
+.tool.sound[aria-pressed="false"] { color: var(--muted); }
+.tool.sound .off { display: none; }
+.tool.sound[aria-pressed="false"] .off { display: inline; }
 .tool svg { width: 20px; height: 20px; flex: none; }
 .tool:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
@@ -182,6 +187,12 @@ canvas.erasing { cursor: cell; }
     <button class="tool" id="eraseBtn" type="button" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H7z"/><path d="M9 11l5 5"/></svg>Silgi
     </button>
+    <button class="tool sound" id="musicBtn" type="button" aria-pressed="true" aria-label="Müzik">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/><path class="off" d="M3 3l18 18"/></svg>
+    </button>
+    <button class="tool sound" id="sfxBtn" type="button" aria-pressed="true" aria-label="Efekt sesleri">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/><path class="off" d="M3 3l18 18"/></svg>
+    </button>
     <button class="tool" id="pauseBtn" type="button" aria-label="Duraklat">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
     </button>
@@ -211,6 +222,116 @@ canvas.erasing { cursor: cell; }
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const rand = (a, b) => a + Math.random() * (b - a);
+
+  // ---------- Sound ----------
+  // Everything is synthesised with Web Audio: a slow, soft chord loop with a music-box
+  // melody on top, plus small chimes for town events. Browsers only allow audio after a tap.
+  const Sound = (() => {
+    const prefs = Object.assign({ music: true, sfx: true }, store.get('trafik-cozucu-sound') || {});
+    let ac = null, musicBus, sfxBus, echo, timer = null, playing = false, nextBar = 0, bar = 0;
+    const BAR = 60 / 66 * 4;                       // 66 bpm, four beats per chord
+    const midi = m => 440 * Math.pow(2, (m - 69) / 12);
+    // Fmaj7 · Em7 · Dm7 · Cmaj7, voiced low and close
+    const CHORDS = [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]];
+    const MELODY = [72, 74, 76, 79, 81, 84];       // C major pentatonic, upper register
+
+    function ensure() {
+      if (!ac) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return false;
+        try { ac = new AC(); } catch { return false; }
+        const out = ac.createGain(); out.gain.value = 0.9; out.connect(ac.destination);
+        musicBus = ac.createGain(); musicBus.gain.value = 0; musicBus.connect(out);
+        sfxBus = ac.createGain(); sfxBus.gain.value = 0.5; sfxBus.connect(out);
+        // a soft echo gives the melody some room
+        echo = ac.createDelay(1); echo.delayTime.value = 0.42;
+        const fb = ac.createGain(); fb.gain.value = 0.3;
+        const tone = ac.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 1800;
+        echo.connect(tone); tone.connect(fb); fb.connect(echo); tone.connect(musicBus);
+      }
+      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      return true;
+    }
+    function note(dest, freq, t, { attack = 0.01, decay = 0.6, gain = 0.2, type = 'sine' } = {}) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gain, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+      o.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + attack + decay + 0.05);
+      return g;
+    }
+    function pad(freq, t, len) {
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.05, t + 1.1);
+      g.gain.setValueAtTime(0.05, t + len - 0.3);
+      g.gain.linearRampToValueAtTime(0, t + len + 1.4);
+      f.connect(g); g.connect(musicBus);
+      for (const detune of [-6, 6]) {
+        const o = ac.createOscillator();
+        o.type = 'triangle'; o.frequency.value = freq; o.detune.value = detune;
+        o.connect(f); o.start(t); o.stop(t + len + 1.5);
+      }
+    }
+    function scheduleBar(t) {
+      const chord = CHORDS[bar % CHORDS.length];
+      for (const m of chord) pad(midi(m), t, BAR);
+      const beat = BAR / 4;
+      note(musicBus, midi(chord[0] - 12), t, { attack: 0.04, decay: 1.6, gain: 0.12 });
+      note(musicBus, midi(chord[0] - 12), t + beat * 2, { attack: 0.04, decay: 1.2, gain: 0.08 });
+      // a few music-box notes per bar, never the same twice in a row
+      let last = null;
+      for (let e = 0; e < 8; e++) {
+        if (Math.random() > (e % 2 ? 0.18 : 0.38)) continue;
+        let m; do { m = MELODY[Math.floor(Math.random() * MELODY.length)]; } while (m === last);
+        last = m;
+        const g = note(musicBus, midi(m), t + e * beat / 2 + rand(0, 0.02), { attack: 0.005, decay: 1.3, gain: 0.06 });
+        g.connect(echo);
+      }
+      bar++;
+    }
+    function tick() {
+      while (nextBar < ac.currentTime + 1.5) { scheduleBar(nextBar); nextBar += BAR; }
+    }
+    function fadeMusic(to) {
+      const now = ac.currentTime;
+      musicBus.gain.cancelScheduledValues(now);
+      musicBus.gain.setValueAtTime(musicBus.gain.value, now);
+      musicBus.gain.linearRampToValueAtTime(to, now + (to ? 2 : 0.6));
+    }
+    function startMusic() {
+      if (!prefs.music || !playing || timer || !ensure()) return;
+      nextBar = Math.max(nextBar, ac.currentTime + 0.1);
+      tick();
+      timer = setInterval(tick, 400);
+      fadeMusic(1);
+    }
+    function stopMusic() {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (ac) fadeMusic(0);
+    }
+    function sfx(fn) {
+      if (!prefs.sfx || !ensure()) return;
+      fn(ac.currentTime + 0.02);
+    }
+    function save() { store.set('trafik-cozucu-sound', prefs); }
+
+    return {
+      prefs,
+      // call from a tap so the browser lets audio start
+      unlock() { ensure(); },
+      setPlaying(v) { playing = v; v ? startMusic() : stopMusic(); },
+      toggleMusic() { prefs.music = !prefs.music; save(); prefs.music ? startMusic() : stopMusic(); return prefs.music; },
+      toggleSfx() { prefs.sfx = !prefs.sfx; save(); if (prefs.sfx) this.house(); return prefs.sfx; },
+      place() { sfx(t => { note(sfxBus, midi(76), t, { decay: 1.2, gain: 0.22 }); note(sfxBus, midi(81), t + 0.16, { decay: 1.6, gain: 0.22 }); note(sfxBus, midi(93), t + 0.16, { decay: 0.6, gain: 0.04 }); }); },
+      house() { sfx(t => note(sfxBus, midi(84), t, { decay: 0.35, gain: 0.12 })); },
+      asphalt() { sfx(t => [72, 76, 79, 84].forEach((m, i) => note(sfxBus, midi(m), t + 0.45 + i * 0.07, { decay: 0.4, gain: 0.1, type: 'triangle' }))); },
+      warn() { sfx(t => { note(sfxBus, midi(69), t, { attack: 0.02, decay: 0.5, gain: 0.2, type: 'triangle' }); note(sfxBus, midi(64), t + 0.28, { attack: 0.02, decay: 0.8, gain: 0.2, type: 'triangle' }); }); },
+    };
+  })();
 
   // ---------- Geometry ----------
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -378,6 +499,8 @@ canvas.erasing { cursor: cell; }
         const grant = Math.round((250 + 60 * S.places.length) / 10) * 10;
         S.asphalt += grant;
         bump();
+        Sound.place();
+        Sound.asphalt();
         toast(`Yeni mekan: ${p.name}  +${grant} kg asfalt`);
         if (!S.houses.some(h => h.color === p.color)) addHouse(p.color, p);
       }
@@ -392,7 +515,7 @@ canvas.erasing { cursor: cell; }
         .map(([c, v]) => ({ c, k: v.houses / v.places + rand(0, 0.8) }))
         .sort((a, b) => a.k - b.k)[0].c;
       const targets = S.places.filter(p => p.color === pick);
-      addHouse(pick, targets[Math.floor(Math.random() * targets.length)]);
+      if (addHouse(pick, targets[Math.floor(Math.random() * targets.length)])) Sound.house();
     }
   }
 
@@ -532,7 +655,7 @@ canvas.erasing { cursor: cell; }
   function checkJams(dt) {
     let worst = null;
     for (const h of S.houses) {
-      if (h.warn == null && h.waiting >= JAM_ON) h.warn = WARN_SECONDS;
+      if (h.warn == null && h.waiting >= JAM_ON) { h.warn = WARN_SECONDS; Sound.warn(); }
       else if (h.warn != null && h.waiting <= JAM_OFF) h.warn = null;
       if (h.warn != null) {
         h.warn -= dt;
@@ -550,6 +673,7 @@ canvas.erasing { cursor: cell; }
   const placeName = c => (PLACES.find(p => p.color === c) || { name: 'Mekan' }).name;
   function gameOver(h) {
     running = false;
+    Sound.setPlaying(false);
     stroke = null;
     const best = Math.max(store.get('trafik-cozucu-best') || 0, S.score);
     store.set('trafik-cozucu-best', best);
@@ -896,6 +1020,7 @@ canvas.erasing { cursor: cell; }
     if (!running) return;
     paused = v;
     stroke = null;
+    Sound.setPlaying(!v);
     $('paused').hidden = !v;
     if (v) $('resumeBtn').focus();
   }
@@ -908,8 +1033,18 @@ canvas.erasing { cursor: cell; }
     setMode('draw');
     running = true; paused = false;
     $('intro').hidden = true; $('over').hidden = true; $('paused').hidden = true; $('alarm').hidden = true;
+    Sound.unlock();
+    Sound.setPlaying(true);
     toast('Evleri mavi Market’in girişine bağla');
   }
+
+  function showSound() {
+    $('musicBtn').setAttribute('aria-pressed', Sound.prefs.music);
+    $('sfxBtn').setAttribute('aria-pressed', Sound.prefs.sfx);
+  }
+  $('musicBtn').onclick = () => { Sound.toggleMusic(); showSound(); toast(Sound.prefs.music ? 'Müzik açık' : 'Müzik kapalı'); };
+  $('sfxBtn').onclick = () => { Sound.toggleSfx(); showSound(); toast(Sound.prefs.sfx ? 'Efekt sesleri açık' : 'Efekt sesleri kapalı'); };
+  showSound();
   $('startBtn').onclick = start;
   $('againBtn').onclick = start;
 
