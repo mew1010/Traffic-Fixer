@@ -9,11 +9,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <style>
-/* Layout: full-screen app — a slim gauge bar on top, the town canvas filling the middle, a thumb-reach toolbar at the bottom. */
+/* Layout: full-screen app — gauges on top, the town canvas in the middle with the mission card top-left and
+   time controls top-right, draw/erase at the bottom within thumb reach. */
 :root {
   --bg: #dfe5d6;            /* page around the map */
   --ground: #cfdcc0;        /* open land */
   --ground-mark: #c2d1b1;
+  --fog: rgba(223, 229, 214, .72);   /* land not opened yet */
   --fg: #1d2420;
   --muted: #5b6659;
   --panel: #f6f8f2;
@@ -23,8 +25,9 @@
   --road-line: #e9e3c6;
   --building: #f6f4ec;
   --building-edge: #2f3331;
-  --accent: #f2c230;        /* signage yellow: asphalt, highlights */
+  --accent: #f2c230;        /* signage yellow: asphalt, rewards, highlights */
   --warn: #d8402f;
+  --freeze: #3d8fd1;        /* time stopped */
   --preview: rgba(74, 79, 76, .55);
   --preview-bad: rgba(216, 64, 47, .55);
   --shadow: rgba(0, 0, 0, .3);
@@ -40,7 +43,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fg: #e8ebe6; --muted: #9aa59b;
+    --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fog: rgba(18, 22, 20, .7); --fg: #e8ebe6; --muted: #9aa59b;
     --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
     --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
     --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
@@ -48,7 +51,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fg: #e8ebe6; --muted: #9aa59b;
+  --bg: #121614; --ground: #1d2520; --ground-mark: #222c26; --fog: rgba(18, 22, 20, .7); --fg: #e8ebe6; --muted: #9aa59b;
   --panel: #1c211e; --edge: #313a34; --road: #3d4340; --road-edge: #0d0f0e; --road-line: #a79f7c;
   --building: #dcd8cb; --building-edge: #0d0f0e; --preview: rgba(200, 205, 200, .35);
   --shadow: rgba(0, 0, 0, .6); --water: #2c5a78; --water-edge: #1d4058; --tree: #3d6b33; --tree-dark: #2a4d23; --rock: #6d6b64; --rock-edge: #4a4843; --bridge: #8a7a5e;
@@ -60,8 +63,9 @@
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45;
-  overflow: hidden; overscroll-behavior: none;
+  overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
 }
+button { touch-action: manipulation; }
 .app {
   height: 100%; display: flex; flex-direction: column; gap: 8px;
   padding-block: 8px;
@@ -69,23 +73,37 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
-.hud { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; }
+.hud { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 6px; }
 .gauge { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 4px 10px 5px; min-width: 0; }
 .gauge span { display: block; font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
 .gauge b { display: block; font: 400 1.15rem/1.15 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gauge small { display: block; font-size: .66rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .gauge.asphalt { border-left: 5px solid var(--accent); }
 .gauge.bump { animation: bump .6s ease; }
 @keyframes bump { 30% { transform: scale(1.06); background: var(--accent); color: #1d2420; } }
 
-.stage { position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: var(--ground); }
+.stage { position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: var(--ground-mark); }
+.stage.frozen::after { content: ""; position: absolute; inset: 0; border: 4px solid var(--freeze); border-radius: 12px; pointer-events: none; z-index: 3; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 canvas.erasing { cursor: cell; }
 
+.mission {
+  position: absolute; top: 10px; left: 10px; z-index: 5; width: min(calc(100% - 80px), 250px); pointer-events: none;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; padding: 7px 10px 8px;
+  display: flex; flex-direction: column; gap: 4px; box-shadow: 0 6px 16px -10px var(--shadow);
+}
+.m-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .66rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.m-head b { font: 400 .8rem var(--display); letter-spacing: 0; text-transform: none; background: var(--accent); color: #1d2420; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.m-text { font-weight: 700; font-size: .88rem; line-height: 1.25; }
+.m-bar { height: 6px; border-radius: 3px; background: var(--edge); overflow: hidden; }
+.m-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.m-count { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 .toast {
-  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; pointer-events: none;
+  position: absolute; left: 50%; bottom: 62px; transform: translateX(-50%); z-index: 4; pointer-events: none;
   background: var(--panel); color: var(--fg); border: 1px solid var(--edge); border-radius: 999px;
   padding: 6px 14px; font-weight: 700; font-size: .85rem; white-space: nowrap; box-shadow: 0 6px 16px -8px var(--shadow);
-  max-width: calc(100% - 130px); overflow: hidden; text-overflow: ellipsis;
+  max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis;
 }
 .alarm {
   position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 4; pointer-events: none;
@@ -107,12 +125,13 @@ canvas.erasing { cursor: cell; }
 .tool.sound .off { display: none; }
 .tool.sound[aria-pressed="false"] .off { display: inline; }
 .tool svg { width: 20px; height: 20px; flex: none; }
-/* pause, speed and undo stack in the map's top-right corner */
+.tool:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* pause, stop-time, speed and undo stack in the map's top-right corner */
 .side { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
 .tool.mini { width: 44px; height: 44px; padding: 0; font: 400 .95rem var(--display); box-shadow: 0 4px 10px -6px var(--shadow); }
 .tool.mini:disabled { opacity: .45; cursor: default; }
+#freezeBtn[aria-pressed="true"] { background: var(--freeze); color: #fff; border-color: var(--freeze); }
 .sound-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.tool:focus-visible, .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
 .overlay {
   position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 16px;
@@ -121,61 +140,89 @@ canvas.erasing { cursor: cell; }
 .card {
   width: min(100%, 360px); background: var(--panel); border: 1px solid var(--edge); border-radius: 14px;
   padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 16px 40px -16px var(--shadow);
-  max-height: 100%; overflow-y: auto;
+  max-height: 100%; overflow-y: auto; margin: 0;
 }
 .card h1, .card h2 { font: 400 1.5rem/1.1 var(--display); margin: 0; text-wrap: balance; }
 .sign { display: inline-block; align-self: flex-start; background: var(--accent); color: #1d2420; border: 3px solid #1d2420; box-shadow: 0 0 0 3px var(--accent); border-radius: 6px; padding: 8px 12px 6px; margin: 3px; }
 .card p { margin: 0; color: var(--muted); }
-.card ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.card ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: .92rem; }
 .card li::marker { color: var(--accent); }
+.field { font-weight: 700; font-size: .85rem; margin-bottom: -6px; }
+.card input {
+  font: 16px var(--body); padding: 10px 12px; width: 100%; user-select: text; -webkit-user-select: text;
+  border: 1px solid var(--edge); border-radius: 8px; background: var(--bg); color: var(--fg);
+}
+.card input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.card .error { color: var(--warn); font-weight: 700; font-size: .85rem; }
+.card .record { color: var(--fg); font-weight: 700; }
+.newrec { align-self: flex-start; font: 400 1rem var(--display); background: var(--accent); color: #1d2420; border-radius: 6px; padding: 3px 10px 1px; }
 .result { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.result div { border: 1px solid var(--edge); border-radius: 8px; padding: 6px 10px; }
+.result div { border: 1px solid var(--edge); border-radius: 8px; padding: 6px 10px; min-width: 0; }
 .result span { display: block; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.result b { font: 400 1.3rem var(--display); font-variant-numeric: tabular-nums; }
+.result b { font: 400 1.3rem var(--display); font-variant-numeric: tabular-nums; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result b.small { font-size: .95rem; padding-top: 4px; }
 .btn {
   font: 700 1.05rem var(--body); background: var(--accent); color: #1d2420; border: 0; border-bottom: 3px solid #b58f12;
   border-radius: 10px; padding: 12px; cursor: pointer;
 }
+.btn.ghost { background: var(--panel); color: var(--fg); border: 1px solid var(--edge); border-bottom-width: 3px; }
+.card .hint { font-size: .8rem; margin-top: -6px; }
 
-@media (prefers-reduced-motion: reduce) { .gauge.bump { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .gauge.bump { animation: none; } .m-bar i { transition: none; } }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="hud">
     <div class="gauge asphalt" id="asphaltBox"><span>Asfalt</span><b id="asphalt">0 kg</b></div>
-    <div class="gauge"><span>Ulaşan</span><b id="score">0</b></div>
+    <div class="gauge"><span>Puan</span><b id="score">0</b><small id="recordLine">Rekor –</small></div>
     <div class="gauge"><span>Süre</span><b id="clock">0:00</b></div>
   </div>
 
   <div class="stage" id="stage">
-    <canvas id="map" aria-label="Şehir haritası. Parmağınla yol çiz."></canvas>
-    <div class="toast" id="toast" hidden></div>
+    <canvas id="map" aria-label="Şehir haritası. Tek parmakla yol çiz, iki parmakla kaydır ve yakınlaştır."></canvas>
+
+    <div class="mission" id="mission" aria-live="polite">
+      <div class="m-head">Görev <b id="mReward">+0 kg</b></div>
+      <div class="m-text" id="mText"></div>
+      <div class="m-bar"><i id="mBar"></i></div>
+      <div class="m-count" id="mCount"></div>
+    </div>
+
     <div class="side">
       <button class="tool mini" id="pauseBtn" type="button" aria-label="Duraklat ve ses ayarları">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="tool mini" id="freezeBtn" type="button" aria-pressed="false" aria-label="Zamanı durdur">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7"/><path d="M9 4l3 3 3-3M9 20l3-3 3 3"/></svg>
       </button>
       <button class="tool mini" id="speedBtn" type="button" aria-label="Oyun hızı">1×</button>
       <button class="tool mini" id="undoBtn" type="button" aria-label="Son yolu geri al" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
       </button>
     </div>
+
+    <div class="toast" id="toast" hidden></div>
     <div class="alarm" id="alarm" hidden><span id="alarmText">Bir evde trafik sıkıştı</span><b id="alarmTime">20</b></div>
 
     <div class="overlay" id="intro">
-      <div class="card">
+      <form class="card" id="startForm" novalidate>
         <h1 class="sign">Trafik Çözücü</h1>
         <p>Küçük bir kasaba büyüyor. Evlerden çıkan arabaları kendi renklerindeki mekana ulaştır.</p>
         <ul>
-          <li>Parmağınla sürükleyerek yol çiz. Yolun ucunu bir binanın beyaz giriş noktasına götürünce oraya bağlanır.</li>
-          <li>Yollar kesiştiği yerde kavşak olur.</li>
-          <li>Her yol asfalt harcar. Yeni mekan açıldıkça asfalt gelir.</li>
-          <li>Nehrin üstünden geçen yol kendiliğinden köprü olur ama üç kat asfalt harcar. Ağaçlardan, kayalardan ve göllerden yol geçmez.</li>
-          <li>Silgiyle dokunduğun yolu kaldırırsın, geri al düğmesi son yolu kaldırır. İkisinde de asfalt geri gelir.</li>
-          <li>Bir evde araba birikirse uyarı çıkar. 20 saniye içinde çözmezsen oyun biter.</li>
+          <li>Tek parmakla yol çiz. Yolun ucunu binanın beyaz giriş noktasına götürünce bağlanır.</li>
+          <li>İki parmakla haritayı kaydır ve yakınlaştır. Harita zamanla genişler.</li>
+          <li>Nehirden geçen yol köprü olur, üç kat asfalt harcar. Ağaç, kaya ve gölden yol geçmez.</li>
+          <li>Asfalt görevlerden ve ulaşan arabalardan gelir. Evler ve mekanlar araba ulaştırdıkça büyür.</li>
+          <li>Kar tanesi zamanı durdurur, o sırada yol yapmaya devam edebilirsin.</li>
+          <li>Bir evde araba birikirse 20 saniyen var.</li>
         </ul>
-        <button class="btn" id="startBtn" type="button">Başla</button>
-      </div>
+        <label class="field" for="playerName">Adın</label>
+        <input id="playerName" name="playerName" maxlength="16" autocomplete="nickname" placeholder="Adını yaz" enterkeyhint="go">
+        <p class="error" id="nameError" hidden>Başlamak için adını yaz.</p>
+        <p class="record" id="introRecord"></p>
+        <button class="btn" type="submit">Başla</button>
+      </form>
     </div>
 
     <div class="overlay" id="paused" hidden>
@@ -197,13 +244,16 @@ canvas.erasing { cursor: cell; }
       <div class="card">
         <h2>Trafik kilitlendi</h2>
         <p id="overText"></p>
+        <p class="newrec" id="newRecord" hidden>Yeni rekor!</p>
         <div class="result">
-          <div><span>Ulaşan</span><b id="overScore">0</b></div>
+          <div><span>Puan</span><b id="overScore">0</b></div>
           <div><span>Süre</span><b id="overTime">0:00</b></div>
-          <div><span>Mekan</span><b id="overPlaces">0</b></div>
-          <div><span>En iyi</span><b id="overBest">0</b></div>
+          <div><span>Ulaşan araba</span><b id="overCars">0</b></div>
+          <div><span>Rekor</span><b class="small" id="overBest">–</b></div>
         </div>
-        <button class="btn" id="againBtn" type="button">Yeniden başla</button>
+        <button class="btn" id="chanceBtn" type="button">Bir şans daha</button>
+        <p class="hint" id="chanceHint">O evde biriken arabalar silinir, oyun zaman durmuş halde devam eder.</p>
+        <button class="btn ghost" id="againBtn" type="button">Yeniden başla</button>
       </div>
     </div>
   </div>
@@ -221,21 +271,58 @@ canvas.erasing { cursor: cell; }
 <script>
 (() => {
   // ---------- Tuning ----------
-  const SHORT_SIDE = 480;          // world units on the screen's short side (1 unit = 1 m of road)
+  const WORLD_SHORT = 860;         // world size along the screen's short side (1 unit = 1 m)
+  const REGION = [0.36, 0.5, 0.65, 0.82, 1];   // share of the world open at each stage
+  const EXPAND_EVERY = 180;        // seconds between land openings
   const ROAD_W = 15;
   const KG_PER_M = 1;              // asphalt cost per metre of road
-  const START_ASPHALT = 1300;
+  const START_ASPHALT = 900, PLACE_GRANT = 250;
+  const KG_PER_POINT = 0.3;        // asphalt each arriving car brings, per point it scores
   const BRIDGE_COST = 3;           // a metre of bridge costs as much as this many metres of road
-  const SUPPLY_EVERY = 60, SUPPLY_KG = 200;
   const DAY = 240;                 // seconds for a full day and night
   const SPEED = 52;                // car speed, m/s of game time
   const GAP = 13;                  // following distance between cars
   const JAM_ON = 6, JAM_OFF = 3, WARN_SECONDS = 20;
-  const HOUSE_R = 10, PLACE_R = 18;
-  const PLACES = [
-    { name: 'Market', color: 1 }, { name: 'Okul', color: 2 }, { name: 'Park', color: 3 },
-    { name: 'Hastane', color: 4 }, { name: 'Kütüphane', color: 5 }, { name: 'Stadyum', color: 6 },
+  // houses grow as their cars arrive; bigger homes send more, and fancier, cars
+  const HOUSE_LEVELS = [
+    { name: 'Ev', need: 15, r: 10, every: 1, value: 1 },
+    { name: 'Apartman', need: 40, r: 12, every: 0.8, value: 2 },
+    { name: 'Site', need: 90, r: 14, every: 0.65, value: 4 },
+    { name: 'Gökdelen', need: null, r: 16, every: 0.5, value: 8 },
   ];
+  const PLACE_NEEDS = [50, 150], PLACE_R = [18, 21, 24];
+  const PLACES = [
+    { names: ['Market', 'Süpermarket', 'AVM'], color: 1 },
+    { names: ['Okul', 'Kolej', 'Kampüs'], color: 2 },
+    { names: ['Park', 'Büyük Park', 'Botanik Bahçesi'], color: 3 },
+    { names: ['Hastane', 'Tıp Merkezi', 'Şehir Hastanesi'], color: 4 },
+    { names: ['Kütüphane', 'Kültür Merkezi', 'Millet Kütüphanesi'], color: 5 },
+    { names: ['Stadyum', 'Arena', 'Olimpiyat Stadı'], color: 6 },
+  ];
+  // the first missions are hand-tuned; after them they repeat with rising numbers
+  const MISSIONS = [
+    { kind: 'deliver', n: 50, reward: 200 },
+    { kind: 'linked', n: 8, reward: 250 },
+    { kind: 'calm', n: 120, reward: 300 },
+    { kind: 'level', lvl: 1, n: 1, reward: 300 },
+    { kind: 'deliver', n: 150, reward: 400 },
+    { kind: 'everyPlace', n: 15, reward: 400 },
+    { kind: 'points', n: 600, reward: 500 },
+    { kind: 'level', lvl: 2, n: 1, reward: 600 },
+    { kind: 'calm', n: 240, reward: 600 },
+    { kind: 'deliver', n: 400, reward: 800 },
+  ];
+  function mission(i) {
+    if (i < MISSIONS.length) return MISSIONS[i];
+    const k = i - MISSIONS.length, step = Math.floor(k / 4) + 1;
+    return [
+      { kind: 'deliver', n: 400 + 200 * step, reward: 800 + 150 * step },
+      { kind: 'points', n: 1500 * step, reward: 900 + 150 * step },
+      { kind: 'calm', n: Math.min(600, 240 + 60 * step), reward: 700 + 150 * step },
+      { kind: 'level', lvl: 3, n: step, reward: 1000 + 150 * step },
+    ][k % 4];
+  }
+  const NAME_KEY = 'trafik-cozucu-name', RECORD_KEY = 'trafik-cozucu-record';
 
   const $ = id => document.getElementById(id);
   const canvas = $('map'), ctx = canvas.getContext('2d');
@@ -390,6 +477,7 @@ canvas.erasing { cursor: cell; }
       toggleSfx() { prefs.sfx = !prefs.sfx; save(); if (prefs.sfx) this.house(); return prefs.sfx; },
       place() { sfx(t => { note(sfxBus, midi(76), t, { decay: 1.2, gain: 0.22 }); note(sfxBus, midi(81), t + 0.16, { decay: 1.6, gain: 0.22 }); note(sfxBus, midi(93), t + 0.16, { decay: 0.6, gain: 0.04 }); }, true); },
       house() { sfx(t => { bell(midi(71), t, 0.2); bell(midi(67), t + 0.42, 0.2); }, true); },
+      levelUp() { sfx(t => [79, 84, 88].forEach((m, i) => note(sfxBus, midi(m), t + i * 0.06, { decay: 0.35, gain: 0.09, type: 'triangle' }))); },
       asphalt() { sfx(t => [72, 76, 79, 84].forEach((m, i) => note(sfxBus, midi(m), t + 0.45 + i * 0.07, { decay: 0.4, gain: 0.1, type: 'triangle' }))); },
       warn() { sfx(t => { note(sfxBus, midi(69), t, { attack: 0.02, decay: 0.5, gain: 0.2, type: 'triangle' }); note(sfxBus, midi(64), t + 0.28, { attack: 0.02, decay: 0.8, gain: 0.2, type: 'triangle' }); }, true); },
 
@@ -456,25 +544,36 @@ canvas.erasing { cursor: cell; }
   }
 
   // ---------- State ----------
-  let W, H, scale = 1, offX = 0, offY = 0;
+  let W, H;                    // world size, fixed by the first screen the game opens on
+  let cam = { x: 0, y: 0, z: 1 }, camTarget = null;
   let S;                       // everything about the current game
   let mode = 'draw';
-  let running = false, paused = false;
+  let running = false, paused = false, frozen = false;
   let colors = {};
+  let player = store.get(NAME_KEY) || '';
+  let record = store.get(RECORD_KEY);
 
   function newGame() {
     S = {
-      t: 0, asphalt: START_ASPHALT, score: 0,
+      t: 0, asphalt: START_ASPHALT, score: 0, delivered: 0, calm: 0,
       nodes: new Map(), edges: new Map(), nid: 1, eid: 1,
       houses: [], places: [], cars: [],
-      nextHouse: 14, nextPlace: 55, nextSupply: SUPPLY_EVERY, placeIndex: 0,
+      nextHouse: 14, nextPlace: 55, nextExpand: EXPAND_EVERY, stage: 0, placeIndex: 0,
       history: [],                // edge ids of recent roads, newest last, for undo
+      mi: 0, mBase: null, chance: true, lost: null,
     };
+    S.region = regionRect(0);
     makeNature();
-    const p = addPlace({ x: W / 2, y: H / 2 }, 0, 150);
+    const p = addPlace({ x: W / 2, y: H / 2 }, 0, 110);
     addHouse(p.color, p);
     addHouse(p.color, p);
+    startMission();
+    fitView(S.region, false);
     updateHud();
+  }
+  function regionRect(stage) {
+    const w = W * REGION[stage], h = H * REGION[stage];
+    return { x: (W - w) / 2, y: (H - h) / 2, w, h };
   }
 
   // ---------- Road graph ----------
@@ -502,7 +601,7 @@ canvas.erasing { cursor: cell; }
     S.nodes.get(e.a)?.edges.delete(e.id);
     S.nodes.get(e.b)?.edges.delete(e.id);
   }
-  // Split an edge at (x, y), keeping cars' paths valid. Returns the node at that spot.
+  // Split an edge at (x, y), keeping cars' paths and undo history valid. Returns the node at that spot.
   function splitEdge(e, x, y) {
     const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
     if (dist(a, { x, y }) < 7) return a;
@@ -552,6 +651,7 @@ canvas.erasing { cursor: cell; }
   }
 
   // ---------- Nature ----------
+  // Laid out over the whole world at the start, so opening new land reveals it.
   // A river crosses the map (roads over it become bridges); lakes, groves and rocks block roads.
   function makeNature() {
     const across = W <= H, long = across ? H : W, short = across ? W : H;
@@ -559,14 +659,15 @@ canvas.erasing { cursor: cell; }
     const pts = [];
     for (let k = -24; k <= short + 24; k += 24) {
       drift = (drift + rand(-9, 9)) * 0.85;
-      c = Math.max(long * 0.2, Math.min(long * 0.8, c + drift));
+      c = Math.max(long * 0.15, Math.min(long * 0.85, c + drift));
       pts.push(across ? { x: k, y: c } : { x: c, y: k });
     }
     S.river = { pts, hw: 13 };
     S.lakes = [];
-    for (let tries = 0; tries < 60 && S.lakes.length < (Math.random() < 0.5 ? 1 : 2); tries++) {
-      const l = { x: rand(70, W - 70), y: rand(70, H - 70), R: rand(30, 48), p1: rand(0, 6), p2: rand(0, 6) };
-      if (inRiver(l, l.R * 1.25 + 30) || S.lakes.some(o => dist(o, l) < o.R + l.R + 80)) continue;
+    const lakes = Math.round(rand(3, 5));
+    for (let tries = 0; tries < 200 && S.lakes.length < lakes; tries++) {
+      const l = { x: rand(70, W - 70), y: rand(70, H - 70), R: rand(30, 52), p1: rand(0, 6), p2: rand(0, 6) };
+      if (inRiver(l, l.R * 1.25 + 30) || S.lakes.some(o => dist(o, l) < o.R + l.R + 90) || dist(l, { x: W / 2, y: H / 2 }) < l.R + 90) continue;
       S.lakes.push(l);
     }
     S.obstacles = [];
@@ -579,8 +680,9 @@ canvas.erasing { cursor: cell; }
         }
       }
     };
-    scatter(Math.round(rand(7, 10)), [5, 11], 28, 6, 9, 'tree');
-    scatter(Math.round(rand(5, 8)), [2, 4], 13, 4, 8, 'rock');
+    const area = W * H / (480 * 800);   // the groves were tuned on a 480 × 800 map
+    scatter(Math.round(rand(7, 10) * area), [5, 11], 28, 6, 9, 'tree');
+    scatter(Math.round(rand(5, 8) * area), [2, 4], 13, 4, 8, 'rock');
   }
   function inRiver(p, pad = 0) {
     const r = S.river;
@@ -594,20 +696,20 @@ canvas.erasing { cursor: cell; }
   // ---------- Buildings ----------
   function buildings() { return [...S.houses, ...S.places]; }
   function freeSpot(r, near, dMin = 95, dMax = 210) {
-    const margin = 26 + r;
+    const R = S.region, margin = 26 + r;
     for (let tries = 0; tries < 400; tries++) {
       let x, y;
       if (near && tries < 300) {
         const ang = rand(0, Math.PI * 2), d = rand(dMin, dMax);
         x = near.x + Math.cos(ang) * d; y = near.y + Math.sin(ang) * d;
-      } else { x = rand(margin, W - margin); y = rand(margin, H - margin); }
-      if (x < margin || y < margin || x > W - margin || y > H - margin) continue;
+      } else { x = rand(R.x + margin, R.x + R.w - margin); y = rand(R.y + margin, R.y + R.h - margin); }
+      if (x < R.x + margin || y < R.y + margin || x > R.x + R.w - margin || y > R.y + R.h - margin) continue;
       const p = { x, y };
-      if (buildings().some(b => dist(b, p) < b.r + r + 58)) continue;
+      if (buildings().some(b => dist(b, p) < b.r + r + 46)) continue;
       if (blocked(p, r + 12) || inRiver(p, r + 16)) continue;
       let clear = true;
       for (const e of S.edges.values()) {
-        if (nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r + 24) { clear = false; break; }
+        if (nearestOnSeg(p, S.nodes.get(e.a), S.nodes.get(e.b)).d < r + 18) { clear = false; break; }
       }
       if (!clear) continue;
       // entrance on the side facing the middle of the map, with some randomness
@@ -616,7 +718,6 @@ canvas.erasing { cursor: cell; }
         .sort((a, b) => b.k - a.k).map(o => o.d);
       for (const [dx, dy] of dirs) {
         const ent = { x: x + dx * (r + 11), y: y + dy * (r + 11) };
-        if (ent.x < 10 || ent.y < 10 || ent.x > W - 10 || ent.y > H - 10) continue;
         if (blocked(ent, 9) || inRiver(ent, 10)) continue;
         return { x, y, dir: [dx, dy], ent };
       }
@@ -625,41 +726,43 @@ canvas.erasing { cursor: cell; }
   }
   function addPlace(near, dMin, dMax) {
     const def = PLACES[S.placeIndex % PLACES.length];
-    const spot = freeSpot(PLACE_R, near, dMin, dMax);
+    // leave room for the building to grow to its biggest size
+    const spot = freeSpot(PLACE_R[2], near, dMin, dMax);
     if (!spot) return null;
     S.placeIndex++;
-    const e = addNode(spot.ent.x, spot.ent.y, true);
-    const p = { kind: 'place', name: def.name, color: def.color, x: spot.x, y: spot.y, r: PLACE_R, dir: spot.dir, entrance: e.id };
+    const ent = { x: spot.x + spot.dir[0] * (PLACE_R[0] + 11), y: spot.y + spot.dir[1] * (PLACE_R[0] + 11) };
+    const e = addNode(ent.x, ent.y, true);
+    const p = { kind: 'place', def, name: def.names[0], color: def.color, x: spot.x, y: spot.y, r: PLACE_R[0], level: 0, got: 0, dir: spot.dir, entrance: e.id };
     S.places.push(p);
     return p;
   }
   function addHouse(color, near) {
-    const spot = freeSpot(HOUSE_R, near);
+    const spot = freeSpot(HOUSE_LEVELS[3].r, near);
     if (!spot) return null;
-    const e = addNode(spot.ent.x, spot.ent.y, true);
-    const h = { kind: 'house', color, x: spot.x, y: spot.y, r: HOUSE_R, dir: spot.dir, entrance: e.id, waiting: 0, trip: rand(3, 7), cool: 0, warn: null };
+    const r = HOUSE_LEVELS[0].r;
+    const e = addNode(spot.x + spot.dir[0] * (r + 11), spot.y + spot.dir[1] * (r + 11), true);
+    const h = { kind: 'house', color, x: spot.x, y: spot.y, r, level: 0, got: 0, dir: spot.dir, entrance: e.id, waiting: 0, trip: rand(3, 7), cool: 0, warn: null };
     S.houses.push(h);
     return h;
   }
   function growTown() {
-    if (S.t >= S.nextSupply) {
-      S.nextSupply += SUPPLY_EVERY;
-      S.asphalt += SUPPLY_KG;
-      bump();
-      Sound.asphalt();
-      toast(`Haftalık asfalt +${SUPPLY_KG} kg`);
+    if (S.stage < REGION.length - 1 && S.t >= S.nextExpand) {
+      S.stage++;
+      S.nextExpand += EXPAND_EVERY;
+      S.region = regionRect(S.stage);
+      fitView(S.region, true);
+      Sound.place();
+      toast('Yeni arazi açıldı');
     }
     if (S.t >= S.nextPlace) {
       S.nextPlace = S.t + 70;
       const p = addPlace();
       if (p) {
-        // bigger towns get bigger deliveries
-        const grant = Math.round((400 + 100 * S.places.length) / 10) * 10;
-        S.asphalt += grant;
+        S.asphalt += PLACE_GRANT;
         bump();
         Sound.place();
         Sound.asphalt();
-        toast(`Yeni mekan: ${p.name}  +${grant} kg asfalt`);
+        toast(`Yeni mekan: ${p.name}  +${PLACE_GRANT} kg asfalt`);
         if (!S.houses.some(h => h.color === p.color)) addHouse(p.color, p);
       }
     }
@@ -675,6 +778,25 @@ canvas.erasing { cursor: cell; }
       const targets = S.places.filter(p => p.color === pick);
       if (addHouse(pick, targets[Math.floor(Math.random() * targets.length)])) Sound.house();
     }
+  }
+  function growHouse(h) {
+    h.got++;
+    const L = HOUSE_LEVELS[h.level];
+    if (!L.need || h.got < L.need) return;
+    h.level++;
+    h.r = HOUSE_LEVELS[h.level].r;
+    Sound.levelUp();
+    if (h.level >= 2) toast(`Bir bina büyüdü: ${HOUSE_LEVELS[h.level].name}`);
+  }
+  function growPlace(p) {
+    p.got++;
+    if (p.level >= PLACE_NEEDS.length || p.got < PLACE_NEEDS[p.level]) return;
+    const old = p.name;
+    p.level++;
+    p.r = PLACE_R[p.level];
+    p.name = p.def.names[p.level];
+    Sound.place();
+    toast(`${old} büyüdü: ${p.name}`);
   }
 
   // ---------- Routing ----------
@@ -706,6 +828,27 @@ canvas.erasing { cursor: cell; }
       }
     }
     return null;
+  }
+  // How many houses can reach a place of their colour at all.
+  function linkedHouses() {
+    const comp = new Map();
+    let c = 0;
+    for (const n of S.nodes.values()) {
+      if (comp.has(n.id) || !n.edges.size) continue;
+      comp.set(n.id, ++c);
+      const stack = [n.id];
+      while (stack.length) {
+        const u = stack.pop();
+        for (const id of S.nodes.get(u).edges) {
+          const e = S.edges.get(id), v = e.a === u ? e.b : e.a;
+          if (!comp.has(v)) { comp.set(v, c); stack.push(v); }
+        }
+      }
+    }
+    return S.houses.filter(h => {
+      const k = comp.get(h.entrance);
+      return k && S.places.some(p => p.color === h.color && comp.get(p.entrance) === k);
+    }).length;
   }
 
   // ---------- Cars ----------
@@ -748,21 +891,33 @@ canvas.erasing { cursor: cell; }
     const h = S.houses[car.house];
     if (h) h.waiting++;
   }
+  function arrive(car) {
+    const v = HOUSE_LEVELS[car.level].value;
+    S.score += v;
+    S.asphalt += v * KG_PER_POINT;
+    S.delivered++;
+    const pl = S.places.find(p => p.entrance === car.path[car.path.length - 1]);
+    if (pl) growPlace(pl);
+    const h = S.houses[car.house];
+    if (h) growHouse(h);
+  }
   function spawnCars(dt) {
     S.houses.forEach((h, idx) => {
       h.trip -= dt;
       if (h.trip <= 0) {
         h.waiting++;
-        const every = Math.max(3.2, 11 - S.t / 32);   // trips come faster as time goes on
+        // trips come faster as time goes on, from bigger homes, and towards bigger places
+        const boost = 1 + 0.15 * Math.max(0, ...S.places.filter(p => p.color === h.color).map(p => p.level));
+        const every = Math.max(3.2, 11 - S.t / 32) * HOUSE_LEVELS[h.level].every / boost;
         h.trip = every * rand(0.7, 1.3);
       }
       h.cool -= dt;
       if (h.waiting > 0 && h.cool <= 0) {
         const path = route(h.entrance, h.color);
         if (path && path.length >= 2 && roomAfter({ path }, 0)) {
-          S.cars.push({ id: S.nid++, house: idx, color: h.color, path, i: 0, d: 0, routeT: S.t, hold: null, holdLeft: 0 });
+          S.cars.push({ id: S.nid++, house: idx, level: h.level, color: h.color, path, i: 0, d: 0, routeT: S.t, hold: null, holdLeft: 0 });
           h.waiting--;
-          h.cool = 0.75;
+          h.cool = 0.6;
           indexCars();
         } else h.cool = path ? 0.25 : 1;
       }
@@ -793,7 +948,7 @@ canvas.erasing { cursor: cell; }
       while (car.d >= len) {
         car.d -= len;
         car.i++;
-        if (car.i >= car.path.length - 1) { done.add(car); releaseHold(car); S.score++; break; }
+        if (car.i >= car.path.length - 1) { done.add(car); releaseHold(car); arrive(car); break; }
         const here = car.path[car.i];
         const nextOk = segLen(car, car.i) != null;
         if (!nextOk || S.t - car.routeT > 1.2) {
@@ -809,6 +964,50 @@ canvas.erasing { cursor: cell; }
     if (done.size) S.cars = S.cars.filter(c => !done.has(c));
   }
 
+  // ---------- Missions ----------
+  function startMission() {
+    S.mBase = { delivered: S.delivered, score: S.score, got: new Map(S.places.map(p => [p, p.got])) };
+    S.calm = 0;
+  }
+  function missionProgress(m) {
+    switch (m.kind) {
+      case 'deliver': return S.delivered - S.mBase.delivered;
+      case 'points': return S.score - S.mBase.score;
+      case 'calm': return Math.floor(S.calm);
+      case 'linked': return linkedHouses();
+      case 'level': return S.houses.filter(h => h.level >= m.lvl).length;
+      case 'everyPlace': return Math.min(...S.places.map(p => p.got - (S.mBase.got.get(p) ?? 0)));
+    }
+    return 0;
+  }
+  function missionText(m) {
+    switch (m.kind) {
+      case 'deliver': return `${m.n} araba ulaştır`;
+      case 'points': return `${m.n} puan topla`;
+      case 'calm': return `${m.n / 60} dakika hiç uyarı almadan dayan`;
+      case 'linked': return `${m.n} evi kendi mekanına bağla`;
+      case 'level': return `${m.n} ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`;
+      case 'everyPlace': return `Her mekana ${m.n} araba ulaştır`;
+    }
+    return '';
+  }
+  function checkMission() {
+    const m = mission(S.mi), v = Math.max(0, Math.min(m.n, missionProgress(m)));
+    $('mText').textContent = missionText(m);
+    $('mReward').textContent = `+${m.reward} kg`;
+    $('mBar').style.width = `${(v / m.n) * 100}%`;
+    $('mCount').textContent = m.kind === 'calm' ? `${fmtTime(v)} / ${fmtTime(m.n)}` : `${v} / ${m.n}`;
+    if (v < m.n) return;
+    S.asphalt += m.reward;
+    bump();
+    Sound.place();
+    Sound.asphalt();
+    toast(`Görev tamam  +${m.reward} kg asfalt`);
+    S.mi++;
+    startMission();
+    checkMission();
+  }
+
   // ---------- Jams ----------
   function checkJams(dt) {
     let worst = null;
@@ -820,6 +1019,7 @@ canvas.erasing { cursor: cell; }
         if (!worst || h.warn < worst.warn) worst = h;
       }
     }
+    S.calm = worst ? 0 : S.calm + dt;
     const alarm = $('alarm');
     if (worst) {
       alarm.hidden = false;
@@ -828,33 +1028,47 @@ canvas.erasing { cursor: cell; }
       if (worst.warn <= 0) gameOver(worst);
     } else alarm.hidden = true;
   }
-  const placeName = c => (PLACES.find(p => p.color === c) || { name: 'Mekan' }).name;
+  const placeName = c => (S.places.find(p => p.color === c) || { name: 'Mekan' }).name;
+  const recordText = () => record ? `${record.name} · ${record.score} puan` : 'Henüz rekor yok';
   function gameOver(h) {
     running = false;
+    S.lost = h;
     Sound.setPlaying(false);
-    stroke = null;
-    Sound.drawStop(false);
-    const best = Math.max(store.get('trafik-cozucu-best') || 0, S.score);
-    store.set('trafik-cozucu-best', best);
+    cancelGesture();
+    const isNew = S.score > 0 && (!record || S.score > record.score);
+    if (isNew) { record = { name: player, score: S.score }; store.set(RECORD_KEY, record); }
     $('overText').textContent = `${placeName(h.color)} yolundaki bir evde ${h.waiting} araba ${WARN_SECONDS} saniyeden uzun bekledi.`;
+    $('newRecord').hidden = !isNew;
     $('overScore').textContent = S.score;
     $('overTime').textContent = fmtTime(S.t);
-    $('overPlaces').textContent = S.places.length;
-    $('overBest').textContent = best;
+    $('overCars').textContent = S.delivered;
+    $('overBest').textContent = recordText();
+    $('chanceBtn').hidden = $('chanceHint').hidden = !S.chance;
+    $('againBtn').classList.toggle('ghost', S.chance);
     $('alarm').hidden = true;
     $('over').hidden = false;
-    $('againBtn').focus();
+    updateHud();
+    (S.chance ? $('chanceBtn') : $('againBtn')).focus();
   }
+  // one extra chance per game: clear the jammed house and carry on with time stopped
+  $('chanceBtn').onclick = () => {
+    if (!S.chance || !S.lost) return;
+    S.chance = false;
+    S.lost.waiting = 0;
+    for (const h of S.houses) h.warn = null;
+    running = true; paused = false;
+    $('over').hidden = true;
+    Sound.setPlaying(true);
+    setFrozen(true);
+  };
 
   // ---------- Drawing & erasing ----------
   let stroke = null;
-  const pxToWorld = px => px / scale;
-  function toWorld(e) {
-    const r = canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale };
-  }
+  const pxToWorld = px => px / cam.z;
+  function local(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  function toWorld(e) { const p = local(e); return { x: cam.x + p.x / cam.z, y: cam.y + p.y / cam.z }; }
   const hitsBuilding = p => buildings().some(b => dist(b, p) < b.r + 7);
-  const inBounds = p => p.x > 4 && p.y > 4 && p.x < W - 4 && p.y < H - 4;
+  const inRegion = p => p.x > S.region.x + 4 && p.y > S.region.y + 4 && p.x < S.region.x + S.region.w - 4 && p.y < S.region.y + S.region.h - 4;
 
   function strokeStart(p) {
     const an = anchorAt(p, pxToWorld(26));
@@ -862,7 +1076,7 @@ canvas.erasing { cursor: cell; }
     Sound.drawStart();
   }
   function strokeMove(p) {
-    if (!stroke.out) Sound.drawMove(dist(stroke.cursor, p) * scale);
+    if (!stroke.out) Sound.drawMove(dist(stroke.cursor, p) * cam.z);
     stroke.cursor = p;
     if (stroke.out) return;
     stroke.bad = false;
@@ -873,7 +1087,7 @@ canvas.erasing { cursor: cell; }
       const q = { x: last.x + (p.x - last.x) * step / d, y: last.y + (p.y - last.y) * step / d };
       const kg = step * KG_PER_M * (inRiver(q) ? BRIDGE_COST : 1);
       if (stroke.cost + kg > S.asphalt) { stroke.out = true; Sound.drawStop(false); Sound.denied(); break; }
-      if (!inBounds(q) || hitsBuilding(q) || blocked(q, 6)) { stroke.bad = true; break; }   // wait until the finger comes back around
+      if (!inRegion(q) || hitsBuilding(q) || blocked(q, 6)) { stroke.bad = true; break; }   // wait until the finger comes back around
       stroke.pts.push(q); stroke.cost += kg; last = q; d = dist(last, p);
     }
     const an = anchorAt(stroke.pts[stroke.pts.length - 1], pxToWorld(26));
@@ -978,17 +1192,39 @@ canvas.erasing { cursor: cell; }
     eraseLast = p;
   }
 
-  let activePointer = null, cursor = null;
+  // ---------- Touch: one finger draws, two fingers pan and zoom ----------
+  const pointers = new Map();
+  let activePointer = null, cursor = null, pinch = null;
+  function cancelGesture() {
+    if (stroke) { stroke = null; Sound.drawStop(false); }
+    activePointer = null; eraseLast = null;
+  }
+  function startPinch() {
+    const [a, b] = [...pointers.values()];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    pinch = { d0: Math.max(10, dist(a, b)), z0: cam.z, world: { x: cam.x + mid.x / cam.z, y: cam.y + mid.y / cam.z } };
+    camTarget = null;
+  }
   canvas.addEventListener('pointerdown', e => {
-    if (!running || paused || activePointer !== null) return;
     e.preventDefault();
-    activePointer = e.pointerId;
     canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, local(e));
+    if (pointers.size === 2) { cancelGesture(); startPinch(); return; }
+    if (pointers.size > 2 || pinch || !running || paused || e.button > 0) return;
+    activePointer = e.pointerId;
     const p = toWorld(e);
     cursor = p;
     if (mode === 'draw') strokeStart(p); else { eraseLast = null; eraseStroke(p); }
   });
   canvas.addEventListener('pointermove', e => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
+    if (pinch) {
+      if (pointers.size < 2) return;
+      const [a, b] = [...pointers.values()];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      zoomTo(pinch.z0 * dist(a, b) / pinch.d0, pinch.world, mid);
+      return;
+    }
     const p = toWorld(e);
     if (e.pointerId !== activePointer) { if (e.pointerType === 'mouse') cursor = p; return; }
     cursor = p;
@@ -996,25 +1232,61 @@ canvas.erasing { cursor: cell; }
     if (mode === 'draw' && stroke) strokeMove(p);
     else if (mode === 'erase') eraseStroke(p);
   });
-  canvas.addEventListener('pointerup', e => {
-    if (e.pointerId !== activePointer) return;
-    activePointer = null;
-    if (mode === 'draw' && running) strokeEnd();
-    eraseLast = null;
+  function lift(e, cancelled) {
+    pointers.delete(e.pointerId);
+    if (pinch && pointers.size < 2) pinch = null;
+    if (e.pointerId === activePointer) {
+      if (cancelled || mode !== 'draw' || !running) cancelGesture();
+      else { activePointer = null; strokeEnd(); }
+      eraseLast = null;
+    }
     if (e.pointerType !== 'mouse') cursor = null;
-  });
-  canvas.addEventListener('pointercancel', e => {
-    if (e.pointerId === activePointer) { stroke = null; Sound.drawStop(false); activePointer = null; eraseLast = null; cursor = null; }
-  });
+  }
+  canvas.addEventListener('pointerup', e => lift(e, false));
+  canvas.addEventListener('pointercancel', e => lift(e, true));
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && activePointer === null) cursor = null; });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const m = local(e);
+    zoomTo(cam.z * Math.exp(-e.deltaY * 0.0015), { x: cam.x + m.x / cam.z, y: cam.y + m.y / cam.z }, m);
+    camTarget = null;
+  }, { passive: false });
+  // stop iOS Safari from zooming the whole page on a pinch
+  document.addEventListener('gesturestart', e => e.preventDefault());
+
+  // ---------- Camera ----------
+  function zoomLimits() { const all = Math.min(cssW / W, cssH / H); return [all * 0.9, Math.max(3, all * 4)]; }
+  // keep world point `w` under screen point `s` at zoom `z`
+  function zoomTo(z, w, s) {
+    const [lo, hi] = zoomLimits();
+    cam.z = Math.min(hi, Math.max(lo, z));
+    cam.x = w.x - s.x / cam.z; cam.y = w.y - s.y / cam.z;
+    clampCam();
+  }
+  // the middle of the screen always stays over open land
+  function clampCam() {
+    const r = S.region, vw = cssW / cam.z, vh = cssH / cam.z;
+    const cx = Math.min(r.x + r.w, Math.max(r.x, cam.x + vw / 2)), cy = Math.min(r.y + r.h, Math.max(r.y, cam.y + vh / 2));
+    cam.x = cx - vw / 2; cam.y = cy - vh / 2;
+  }
+  function fitView(r, animate) {
+    const z = Math.min(cssW / r.w, cssH / r.h) * 0.98;
+    const t = { z, x: r.x + r.w / 2 - cssW / 2 / z, y: r.y + r.h / 2 - cssH / 2 / z };
+    if (animate) camTarget = t; else { cam = t; camTarget = null; }
+  }
+  function easeCamera(dt) {
+    if (!camTarget || pinch || activePointer !== null) return;
+    const k = 1 - Math.exp(-dt * 3);
+    for (const key of ['x', 'y', 'z']) cam[key] += (camTarget[key] - cam[key]) * k;
+    if (Math.abs(cam.z - camTarget.z) < 0.002) { cam = camTarget; camTarget = null; }
+  }
 
   function setMode(m) {
     mode = m;
     $('drawBtn').setAttribute('aria-pressed', m === 'draw');
     $('eraseBtn').setAttribute('aria-pressed', m === 'erase');
     canvas.classList.toggle('erasing', m === 'erase');
-    stroke = null;
-    Sound.drawStop(false);
+    cancelGesture();
   }
   $('drawBtn').onclick = () => setMode('draw');
   $('eraseBtn').onclick = () => setMode('erase');
@@ -1024,8 +1296,10 @@ canvas.erasing { cursor: cell; }
   function updateHud() {
     $('asphalt').textContent = `${Math.floor(S.asphalt)} kg`;
     $('score').textContent = S.score;
+    $('recordLine').textContent = `Rekor ${record ? record.score : '–'}`;
     $('clock').textContent = fmtTime(S.t);
     $('undoBtn').disabled = !S.history.length;
+    checkMission();
   }
   function bump() { const b = $('asphaltBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   let toastTimer;
@@ -1037,8 +1311,8 @@ canvas.erasing { cursor: cell; }
   // ---------- Rendering ----------
   function readColors() {
     const cs = getComputedStyle(document.documentElement);
-    for (const n of ['ground', 'ground-mark', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'preview', 'preview-bad', 'fg', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6',
-      'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp']) {
+    for (const n of ['ground', 'ground-mark', 'fog', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'preview', 'preview-bad', 'fg',
+      'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp']) {
       colors[n] = cs.getPropertyValue('--' + n).trim();
     }
   }
@@ -1048,15 +1322,17 @@ canvas.erasing { cursor: cell; }
   let dpr = 1, cssW = 0, cssH = 0;
   function fit() {
     const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // keep the same spot in the middle when the screen changes size (e.g. the address bar hides)
+    const mid = cssW ? { x: cam.x + cssW / 2 / cam.z, y: cam.y + cssH / 2 / cam.z } : null;
     cssW = r.width; cssH = r.height;
-    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
     canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
-    if (W == null) {   // the town's size is fixed by the first screen it opens on
-      const ratio = Math.min(2.1, Math.max(cssW, cssH) / Math.max(1, Math.min(cssW, cssH)));
-      if (cssW <= cssH) { W = SHORT_SIDE; H = SHORT_SIDE * ratio; } else { H = SHORT_SIDE; W = SHORT_SIDE * ratio; }
+    if (W == null) {
+      const ratio = Math.min(2.1, Math.max(1, Math.max(cssW, cssH) / Math.min(cssW, cssH)));
+      if (cssW <= cssH) { W = WORLD_SHORT; H = WORLD_SHORT * ratio; } else { H = WORLD_SHORT; W = WORLD_SHORT * ratio; }
     }
-    scale = Math.min(cssW / W, cssH / H);
-    offX = (cssW - W * scale) / 2; offY = (cssH - H * scale) / 2;
+    if (mid && S) { cam.x = mid.x - cssW / 2 / cam.z; cam.y = mid.y - cssH / 2 / cam.z; clampCam(); }
   }
   window.addEventListener('resize', fit);
 
@@ -1083,17 +1359,22 @@ canvas.erasing { cursor: cell; }
     for (const e of S.edges.values()) if (!seen.has(e.id)) chains.push(walk(S.nodes.get(e.a), e));   // closed loops
     return chains;
   }
-
   function rrect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
+  // small "12/40" counters with a halo so they read on any ground
+  function label(text, x, y, size, color) {
+    ctx.font = `700 ${size}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+    ctx.lineWidth = 3; ctx.strokeStyle = colors.ground; ctx.strokeText(text, x, y);
+    ctx.fillStyle = color || colors.fg; ctx.fillText(text, x, y);
+  }
 
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = colors['ground-mark']; ctx.fillRect(0, 0, cssW, cssH);
-    ctx.translate(offX, offY); ctx.scale(scale, scale);
+    ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
     ctx.fillStyle = colors.ground; ctx.fillRect(0, 0, W, H);
     // faint survey pegs so the empty land reads as a building site
     ctx.fillStyle = colors['ground-mark'];
@@ -1127,7 +1408,6 @@ canvas.erasing { cursor: cell; }
       ctx.strokeStyle = colors.road; ctx.lineWidth = 6; ctx.stroke();
     }
 
-    // roads: kerb pass, then asphalt pass
     const roads = new Path2D();
     for (const e of S.edges.values()) {
       const a = S.nodes.get(e.a), b = S.nodes.get(e.b);
@@ -1152,9 +1432,6 @@ canvas.erasing { cursor: cell; }
     ctx.setLineDash([7, 8]); ctx.lineCap = 'butt';
     ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.4; ctx.stroke(lanes);
     ctx.restore();
-    ctx.fillStyle = colors['road-line']; ctx.globalAlpha = .4;
-    for (const n of S.nodes.values()) if (isJunction(n) && !n.fixed) { ctx.beginPath(); ctx.arc(n.x, n.y, 3, 0, 7); ctx.fill(); }
-    ctx.globalAlpha = 1;
 
     // the road being drawn
     if (stroke && stroke.pts.length > 1) {
@@ -1167,7 +1444,7 @@ canvas.erasing { cursor: cell; }
       if (stroke.end) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(stroke.end.x, stroke.end.y, 10, 0, 7); ctx.stroke(); }
     }
 
-    // cars drive on the right-hand lane
+    // cars drive on the right-hand lane; cars from bigger homes are longer and trimmed in gold
     const placed = [];
     for (const car of S.cars) {
       const a = S.nodes.get(car.path[car.i]), b = S.nodes.get(car.path[car.i + 1]);
@@ -1175,10 +1452,14 @@ canvas.erasing { cursor: cell; }
       const len = dist(a, b) || 1, t = Math.min(1, car.d / len);
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
       const x = a.x + (b.x - a.x) * t - Math.sin(ang) * 3.6, y = a.y + (b.y - a.y) * t + Math.cos(ang) * 3.6;
-      placed.push({ x, y, ang });
+      const L = car.level, cl = [10, 11, 12, 12.5][L];
+      placed.push({ x, y, ang, cl });
       ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-      ctx.fillStyle = colors['c' + car.color]; rrect(-5, -3, 10, 6, 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(1.5, -2, 1.8, 4);
+      ctx.fillStyle = colors['c' + car.color]; rrect(-cl / 2, -3, cl, 6, 2); ctx.fill();
+      if (L >= 3) { ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.8; ctx.stroke(); }
+      if (L >= 1) { ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(-cl / 2 + 2, -2, cl * 0.4, 4); }
+      if (L >= 2) { ctx.fillStyle = colors.accent; ctx.fillRect(-cl / 2 + 1, -3, cl - 2, 0.9); ctx.fillRect(-cl / 2 + 1, 2.1, cl - 2, 0.9); }
+      ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(cl / 2 - 3.5, -2, 1.8, 4);
       ctx.restore();
     }
 
@@ -1188,6 +1469,13 @@ canvas.erasing { cursor: cell; }
       ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(o.x - o.r * 0.3, o.y - o.r * 0.3, o.r * 0.45, 0, 7); ctx.fill();
     }
 
+    // land not opened yet is veiled, with a dashed boundary
+    const R = S.region;
+    ctx.fillStyle = colors.fog;
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.rect(R.x, R.y, R.w, R.h); ctx.fill('evenodd');
+    ctx.save(); ctx.setLineDash([8, 6]); ctx.strokeStyle = colors.fg; ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5 / cam.z * 1.5;
+    ctx.strokeRect(R.x, R.y, R.w, R.h); ctx.restore();
+
     // night: tint the land, then switch on headlights; buildings stay lit and readable
     const dark = darkness(S.t);
     if (dark > 0) {
@@ -1195,8 +1483,9 @@ canvas.erasing { cursor: cell; }
       ctx.fillStyle = colors.lamp;
       for (const c of placed) {
         ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.ang);
-        ctx.globalAlpha = 0.28 * dark; ctx.beginPath(); ctx.moveTo(5, -2.5); ctx.lineTo(17, -6); ctx.lineTo(17, 6); ctx.lineTo(5, 2.5); ctx.fill();
-        ctx.globalAlpha = dark; ctx.fillRect(4, -2.6, 1.6, 1.6); ctx.fillRect(4, 1, 1.6, 1.6);
+        const f = c.cl / 2;
+        ctx.globalAlpha = 0.28 * dark; ctx.beginPath(); ctx.moveTo(f, -2.5); ctx.lineTo(f + 12, -6); ctx.lineTo(f + 12, 6); ctx.lineTo(f, 2.5); ctx.fill();
+        ctx.globalAlpha = dark; ctx.fillRect(f - 1, -2.6, 1.6, 1.6); ctx.fillRect(f - 1, 1, 1.6, 1.6);
         ctx.restore();
       }
       ctx.globalAlpha = 0.22 * dark;
@@ -1215,14 +1504,18 @@ canvas.erasing { cursor: cell; }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const p of S.places) {
       const s = p.r;
+      if (p.level >= 1) { ctx.fillStyle = 'rgba(0,0,0,.22)'; rrect(p.x - s + 3, p.y - s + 3, s * 2, s * 2, 7); ctx.fill(); }
       ctx.fillStyle = colors['c' + p.color]; ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 2;
       rrect(p.x - s, p.y - s, s * 2, s * 2, 6); ctx.fill(); ctx.stroke();
+      if (p.level >= 2) { ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; rrect(p.x - s + 3, p.y - s + 3, s * 2 - 6, s * 2 - 6, 4); ctx.stroke(); }
       ctx.fillStyle = 'rgba(255,255,255,.92)';
-      ctx.font = '400 15px Bungee, "Arial Black", sans-serif';
-      ctx.fillText(p.name[0], p.x, p.y + 1);
-      ctx.font = '700 10px "Atkinson Hyperlegible", system-ui, sans-serif';
-      ctx.fillStyle = colors.fg;
-      ctx.fillText(p.name, p.x, p.dir[1] === -1 ? p.y + s + 9 : p.y - s - 8);
+      ctx.font = `400 ${15 + p.level * 2}px Bungee, "Arial Black", sans-serif`;
+      ctx.fillText(p.name[0], p.x, p.y - (p.level < 2 ? 3 : 1));
+      if (p.level < PLACE_NEEDS.length) {
+        ctx.font = '700 7.5px "Atkinson Hyperlegible", system-ui, sans-serif';
+        ctx.fillText(`${p.got}/${PLACE_NEEDS[p.level]}`, p.x, p.y + s - 7);
+      }
+      label(p.name, p.x, p.dir[1] === -1 ? p.y + s + 9 : p.y - s - 8, 10);
     }
     for (const h of S.houses) {
       const s = h.r;
@@ -1233,31 +1526,47 @@ canvas.erasing { cursor: cell; }
         ctx.strokeStyle = colors.warn; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.arc(h.x, h.y, s + 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
       }
+      // taller homes cast a longer shadow
+      if (h.level >= 2) { ctx.fillStyle = 'rgba(0,0,0,.25)'; rrect(h.x - s + h.level + 1, h.y - s + h.level + 1, s * 2, s * 2, 3); ctx.fill(); }
       ctx.fillStyle = colors.building; ctx.strokeStyle = colors['building-edge']; ctx.lineWidth = 1.6;
       rrect(h.x - s, h.y - s, s * 2, s * 2, 3); ctx.fill(); ctx.stroke();
       ctx.fillStyle = colors['c' + h.color];
       rrect(h.x - s + 3, h.y - s + 3, s * 2 - 6, s * 2 - 6, 2); ctx.fill();
-      if (dark > 0) { ctx.globalAlpha = dark; ctx.fillStyle = colors.lamp; ctx.fillRect(h.x - 2.5, h.y - 2.5, 5, 5); ctx.globalAlpha = 1; }
+      // window grid: one lamp for a house, 2×2 up to 4×4 for a tower
+      const n = h.level + 1, inner = s * 2 - 6, cell = inner / n;
+      if (h.level > 0 || dark > 0) {
+        ctx.fillStyle = dark > 0.3 ? colors.lamp : 'rgba(255,255,255,.7)';
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+          const w = cell * 0.45;
+          ctx.fillRect(h.x - s + 3 + cell * (i + 0.5) - w / 2, h.y - s + 3 + cell * (j + 0.5) - w / 2, w, w);
+        }
+      }
       // trips waiting to leave, as dots above the roof
-      const n = Math.min(h.waiting, 8);
-      for (let k = 0; k < n; k++) {
-        ctx.fillStyle = k >= JAM_ON - 1 ? colors.warn : colors.fg;
-        ctx.beginPath(); ctx.arc(h.x - (n - 1) * 3 + k * 6, h.y - s - 6, 2.2, 0, 7); ctx.fill();
+      const k = Math.min(h.waiting, 8);
+      for (let q = 0; q < k; q++) {
+        ctx.fillStyle = q >= JAM_ON - 1 ? colors.warn : colors.fg;
+        ctx.beginPath(); ctx.arc(h.x - (k - 1) * 3 + q * 6, h.y - s - 6, 2.2, 0, 7); ctx.fill();
+      }
+      // cars delivered towards the next size, on the side away from the entrance
+      const need = HOUSE_LEVELS[h.level].need;
+      if (need) {
+        const up = h.dir[1] === 1;
+        label(`${h.got}/${need}`, h.x - h.dir[0] * (s + 13), up ? h.y - s - 15 : h.y - h.dir[1] * (s + 9), 8);
       }
     }
 
     // asphalt tag above the finger while drawing, eraser ring while erasing
     if (stroke && stroke.cursor) {
       const c = stroke.cursor;
-      const label = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.cost)} kg`;
-      ctx.font = '700 12px "Atkinson Hyperlegible", system-ui, sans-serif';
-      const w = ctx.measureText(label).width + 14;
-      const tx = Math.max(w / 2 + 4, Math.min(W - w / 2 - 4, c.x)), ty = Math.max(14, c.y - 46 / scale);
-      ctx.fillStyle = stroke.out ? colors.warn : colors.fg; rrect(tx - w / 2, ty - 10, w, 20, 10); ctx.fill();
-      ctx.fillStyle = stroke.out ? '#fff' : colors.ground; ctx.fillText(label, tx, ty + 1);
+      const text = stroke.out ? 'Asfalt bitti' : `${Math.ceil(stroke.cost)} kg`;
+      ctx.font = `700 ${12 / Math.min(1.6, cam.z) * 1.2}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+      const w = ctx.measureText(text).width + 14, hgt = 20 / Math.min(1.6, cam.z) * 1.2;
+      const tx = c.x, ty = c.y - 50 / cam.z;
+      ctx.fillStyle = stroke.out ? colors.warn : colors.fg; rrect(tx - w / 2, ty - hgt / 2, w, hgt, hgt / 2); ctx.fill();
+      ctx.fillStyle = stroke.out ? '#fff' : colors.ground; ctx.fillText(text, tx, ty + 1);
     }
     if (mode === 'erase' && cursor && running) {
-      ctx.strokeStyle = colors.warn; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = colors.warn; ctx.lineWidth = 2 / cam.z; ctx.setLineDash([4 / cam.z, 3 / cam.z]);
       ctx.beginPath(); ctx.arc(cursor.x, cursor.y, pxToWorld(18), 0, 7); ctx.stroke(); ctx.setLineDash([]);
     }
   }
@@ -1266,6 +1575,14 @@ canvas.erasing { cursor: cell; }
   let lastFrame = 0, hudTimer = 0, speed = 1;
   function setSpeed(v) { speed = v; $('speedBtn').textContent = `${v}×`; }
   $('speedBtn').onclick = () => setSpeed(speed === 1 ? 2 : 1);
+  function setFrozen(v) {
+    frozen = v;
+    $('freezeBtn').setAttribute('aria-pressed', v);
+    $('stage').classList.toggle('frozen', v);
+    if (v) toast('Zaman durdu. Yol yapmaya devam edebilirsin.');
+  }
+  $('freezeBtn').onclick = () => { if (running && !paused) setFrozen(!frozen); };
+
   function update(dt) {
     S.t += dt;
     growTown();
@@ -1278,11 +1595,12 @@ canvas.erasing { cursor: cell; }
   function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000 || 0);
     lastFrame = now;
-    if (running && !paused) {
+    if (running && !paused && !frozen) {
       // small fixed steps keep car spacing steady on slow phones
       let left = dt * speed;
       while (left > 1e-6 && running) { const h = Math.min(left, 1 / 60); update(h); left -= h; }
     }
+    easeCamera(dt);
     draw();
     requestAnimationFrame(frame);
   }
@@ -1290,8 +1608,7 @@ canvas.erasing { cursor: cell; }
   function setPaused(v) {
     if (!running) return;
     paused = v;
-    stroke = null;
-    Sound.drawStop(false);
+    cancelGesture();
     Sound.setPlaying(!v);
     $('paused').hidden = !v;
     if (v) $('resumeBtn').focus();
@@ -1304,12 +1621,26 @@ canvas.erasing { cursor: cell; }
     newGame();
     setMode('draw');
     setSpeed(1);
+    setFrozen(false);
     running = true; paused = false;
     $('intro').hidden = true; $('over').hidden = true; $('paused').hidden = true; $('alarm').hidden = true;
     Sound.unlock();
     Sound.setPlaying(true);
     toast('Evleri Market’e bağla');
   }
+  $('playerName').value = player;
+  $('introRecord').textContent = `Rekor: ${recordText()}`;
+  $('startForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('playerName').value.trim();
+    $('nameError').hidden = !!name;
+    if (!name) { $('playerName').focus(); return; }
+    player = name;
+    store.set(NAME_KEY, name);
+    $('playerName').blur();
+    start();
+  });
+  $('againBtn').onclick = start;
 
   function showSound() {
     $('musicBtn').setAttribute('aria-pressed', Sound.prefs.music);
@@ -1318,8 +1649,6 @@ canvas.erasing { cursor: cell; }
   $('musicBtn').onclick = () => { Sound.toggleMusic(); showSound(); };
   $('sfxBtn').onclick = () => { Sound.toggleSfx(); showSound(); };
   showSound();
-  $('startBtn').onclick = start;
-  $('againBtn').onclick = start;
 
   readColors();
   fit();
@@ -1329,7 +1658,10 @@ canvas.erasing { cursor: cell; }
   // used by automated tests
   window.__trafik = {
     get S() { return S; }, update,
-    toScreen: p => { const r = canvas.getBoundingClientRect(); return { x: r.left + offX + p.x * scale, y: r.top + offY + p.y * scale }; },
+    get cam() { return cam; },
+    get world() { return { W, H }; },
+    fit: () => fitView(S.region, false),
+    toScreen: p => { const r = canvas.getBoundingClientRect(); return { x: r.left + (p.x - cam.x) * cam.z, y: r.top + (p.y - cam.y) * cam.z }; },
   };
 })();
 </script>
