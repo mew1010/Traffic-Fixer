@@ -228,7 +228,8 @@ canvas.erasing { cursor: cell; }
   // melody on top, plus small chimes for town events. Browsers only allow audio after a tap.
   const Sound = (() => {
     const prefs = Object.assign({ music: true, sfx: true }, store.get('trafik-cozucu-sound') || {});
-    let ac = null, musicBus, sfxBus, echo, timer = null, playing = false, nextBar = 0, bar = 0;
+    let ac = null, musicBus, duck, sfxBus, echo, timer = null, playing = false, nextBar = 0, bar = 0;
+    let gravel = null, lastMove = null;
     const BAR = 60 / 66 * 4;                       // 66 bpm, four beats per chord
     const midi = m => 440 * Math.pow(2, (m - 69) / 12);
     // Fmaj7 · Em7 · Dm7 · Cmaj7, voiced low and close
@@ -241,7 +242,9 @@ canvas.erasing { cursor: cell; }
         if (!AC) return false;
         try { ac = new AC(); } catch { return false; }
         const out = ac.createGain(); out.gain.value = 0.9; out.connect(ac.destination);
-        musicBus = ac.createGain(); musicBus.gain.value = 0; musicBus.connect(out);
+        // the music passes through a "duck" stage so chimes can push it back for a moment
+        duck = ac.createGain(); duck.connect(out);
+        musicBus = ac.createGain(); musicBus.gain.value = 0; musicBus.connect(duck);
         sfxBus = ac.createGain(); sfxBus.gain.value = 0.5; sfxBus.connect(out);
         // a soft echo gives the melody some room
         echo = ac.createDelay(1); echo.delayTime.value = 0.42;
@@ -313,9 +316,46 @@ canvas.erasing { cursor: cell; }
       if (timer) { clearInterval(timer); timer = null; }
       if (ac) fadeMusic(0);
     }
-    function sfx(fn) {
+    function sfx(fn, ducking) {
       if (!prefs.sfx || !ensure()) return;
-      fn(ac.currentTime + 0.02);
+      const t = ac.currentTime + 0.02;
+      if (ducking) {
+        duck.gain.cancelScheduledValues(t);
+        duck.gain.setValueAtTime(duck.gain.value, t);
+        duck.gain.linearRampToValueAtTime(0.4, t + 0.06);
+        duck.gain.setValueAtTime(0.4, t + 0.7);
+        duck.gain.linearRampToValueAtTime(1, t + 1.7);
+      }
+      fn(t);
+    }
+    // a doorbell: inharmonic partials make it metallic, unlike anything in the music
+    function bell(freq, t, gain) {
+      [[1, 1, 1.4], [2.76, 0.35, 0.6], [5.4, 0.12, 0.3]].forEach(([ratio, level, decay]) =>
+        note(sfxBus, freq * ratio, t, { attack: 0.004, decay, gain: gain * level }));
+    }
+    function noiseBuffer(seconds, crackle) {
+      const len = Math.floor(ac.sampleRate * seconds), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+      let brown = 0;
+      for (let i = 0; i < len; i++) {
+        brown = (brown + 0.04 * (Math.random() * 2 - 1)) / 1.04;
+        d[i] = brown * 3 + (Math.random() * 2 - 1) * 0.25;
+        if (crackle && Math.random() < 0.0009) d[i] += (Math.random() < 0.5 ? -1 : 1) * 0.9;   // grit
+      }
+      return buf;
+    }
+    function thud(t) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.18);
+      g.gain.setValueAtTime(0.32, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+      o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.3);
+      const n = ac.createBufferSource(); n.buffer = noiseBuffer(0.2, true);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+      const ng = ac.createGain();
+      ng.gain.setValueAtTime(0.35, t);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      n.connect(f); f.connect(ng); ng.connect(sfxBus); n.start(t);
     }
     function save() { store.set('trafik-cozucu-sound', prefs); }
 
@@ -326,10 +366,53 @@ canvas.erasing { cursor: cell; }
       setPlaying(v) { playing = v; v ? startMusic() : stopMusic(); },
       toggleMusic() { prefs.music = !prefs.music; save(); prefs.music ? startMusic() : stopMusic(); return prefs.music; },
       toggleSfx() { prefs.sfx = !prefs.sfx; save(); if (prefs.sfx) this.house(); return prefs.sfx; },
-      place() { sfx(t => { note(sfxBus, midi(76), t, { decay: 1.2, gain: 0.22 }); note(sfxBus, midi(81), t + 0.16, { decay: 1.6, gain: 0.22 }); note(sfxBus, midi(93), t + 0.16, { decay: 0.6, gain: 0.04 }); }); },
-      house() { sfx(t => note(sfxBus, midi(84), t, { decay: 0.35, gain: 0.12 })); },
+      place() { sfx(t => { note(sfxBus, midi(76), t, { decay: 1.2, gain: 0.22 }); note(sfxBus, midi(81), t + 0.16, { decay: 1.6, gain: 0.22 }); note(sfxBus, midi(93), t + 0.16, { decay: 0.6, gain: 0.04 }); }, true); },
+      house() { sfx(t => { bell(midi(71), t, 0.2); bell(midi(67), t + 0.42, 0.2); }, true); },
       asphalt() { sfx(t => [72, 76, 79, 84].forEach((m, i) => note(sfxBus, midi(m), t + 0.45 + i * 0.07, { decay: 0.4, gain: 0.1, type: 'triangle' }))); },
-      warn() { sfx(t => { note(sfxBus, midi(69), t, { attack: 0.02, decay: 0.5, gain: 0.2, type: 'triangle' }); note(sfxBus, midi(64), t + 0.28, { attack: 0.02, decay: 0.8, gain: 0.2, type: 'triangle' }); }); },
+      warn() { sfx(t => { note(sfxBus, midi(69), t, { attack: 0.02, decay: 0.5, gain: 0.2, type: 'triangle' }); note(sfxBus, midi(64), t + 0.28, { attack: 0.02, decay: 0.8, gain: 0.2, type: 'triangle' }); }, true); },
+
+      // road drawing: a gravel hiss that follows the finger's speed, a thud when the road is laid
+      drawStart() {
+        this.drawStop(false);
+        if (!prefs.sfx || !ensure()) return;
+        const src = ac.createBufferSource(); src.buffer = noiseBuffer(2, true); src.loop = true;
+        const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 0.7;
+        const g = ac.createGain(); g.gain.value = 0;
+        src.connect(bp); bp.connect(g); g.connect(sfxBus); src.start();
+        gravel = { src, g, bp };
+        lastMove = null;
+      },
+      drawMove(px) {
+        if (!gravel) return;
+        const now = ac.currentTime;
+        if (lastMove) {
+          const speed = px / Math.max(0.008, now - lastMove);          // screen px per second
+          const level = (0.35 + 0.65 * Math.min(1, speed / 500)) * 0.6;
+          gravel.g.gain.cancelScheduledValues(now);
+          gravel.g.gain.setTargetAtTime(level, now, 0.03);
+          gravel.g.gain.setTargetAtTime(0, now + 0.09, 0.07);          // fades if the finger stops
+          gravel.bp.frequency.setTargetAtTime(900 + level * 1500, now, 0.05);
+        }
+        lastMove = now;
+      },
+      drawStop(laid) {
+        if (gravel) {
+          const { src, g } = gravel, now = ac.currentTime;
+          g.gain.cancelScheduledValues(now);
+          g.gain.setTargetAtTime(0, now, 0.03);
+          src.stop(now + 0.2);
+          gravel = null;
+        }
+        if (laid) sfx(thud);
+      },
+      // a short muffled "no" when the asphalt runs out
+      denied() {
+        sfx(t => {
+          const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500; f.connect(sfxBus);
+          note(f, 165, t, { attack: 0.01, decay: 0.12, gain: 0.3, type: 'square' });
+          note(f, 123, t + 0.13, { attack: 0.01, decay: 0.22, gain: 0.3, type: 'square' });
+        });
+      },
     };
   })();
 
@@ -675,6 +758,7 @@ canvas.erasing { cursor: cell; }
     running = false;
     Sound.setPlaying(false);
     stroke = null;
+    Sound.drawStop(false);
     const best = Math.max(store.get('trafik-cozucu-best') || 0, S.score);
     store.set('trafik-cozucu-best', best);
     $('overText').textContent = `${placeName(h.color)} yolundaki bir evde ${h.waiting} araba ${WARN_SECONDS} saniyeden uzun bekledi.`;
@@ -700,8 +784,10 @@ canvas.erasing { cursor: cell; }
   function strokeStart(p) {
     const an = anchorAt(p, pxToWorld(26));
     stroke = { pts: [an ? { x: an.x, y: an.y } : p], start: an, length: 0, out: false, bad: false, end: null, cursor: p };
+    Sound.drawStart();
   }
   function strokeMove(p) {
+    if (!stroke.out) Sound.drawMove(dist(stroke.cursor, p) * scale);
     stroke.cursor = p;
     if (stroke.out) return;
     stroke.bad = false;
@@ -710,7 +796,7 @@ canvas.erasing { cursor: cell; }
     while (d >= 4) {
       const step = Math.min(6, d);
       const q = { x: last.x + (p.x - last.x) * step / d, y: last.y + (p.y - last.y) * step / d };
-      if ((stroke.length + step) * KG_PER_M > S.asphalt) { stroke.out = true; break; }
+      if ((stroke.length + step) * KG_PER_M > S.asphalt) { stroke.out = true; Sound.drawStop(false); Sound.denied(); break; }
       if (!inBounds(q) || hitsBuilding(q)) { stroke.bad = true; break; }   // wait until the finger comes back around
       stroke.pts.push(q); stroke.length += step; last = q; d = dist(last, p);
     }
@@ -740,12 +826,13 @@ canvas.erasing { cursor: cell; }
     if (s.end) pts.push({ x: s.end.x, y: s.end.y });
     let total = 0;
     for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
-    if (pts.length < 2 || total < 10) return;
+    if (pts.length < 2 || total < 10) { Sound.drawStop(false); return; }
     const line = smooth(pts);
     let cost = 0;
     for (let i = 1; i < line.length; i++) cost += dist(line[i - 1], line[i]);
     cost = Math.ceil(cost * KG_PER_M);
-    if (cost > S.asphalt) { toast('Bu yol için asfalt yetmiyor'); return; }
+    if (cost > S.asphalt) { Sound.drawStop(false); Sound.denied(); toast('Bu yol için asfalt yetmiyor'); return; }
+    Sound.drawStop(true);
 
     let prev = resolveAnchor(s.start) || addNode(line[0].x, line[0].y);
     const endNode = s.end ? resolveAnchor(s.end) : null;
@@ -823,7 +910,7 @@ canvas.erasing { cursor: cell; }
     if (e.pointerType !== 'mouse') cursor = null;
   });
   canvas.addEventListener('pointercancel', e => {
-    if (e.pointerId === activePointer) { stroke = null; activePointer = null; eraseLast = null; cursor = null; }
+    if (e.pointerId === activePointer) { stroke = null; Sound.drawStop(false); activePointer = null; eraseLast = null; cursor = null; }
   });
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && activePointer === null) cursor = null; });
 
@@ -833,6 +920,7 @@ canvas.erasing { cursor: cell; }
     $('eraseBtn').setAttribute('aria-pressed', m === 'erase');
     canvas.classList.toggle('erasing', m === 'erase');
     stroke = null;
+    Sound.drawStop(false);
   }
   $('drawBtn').onclick = () => setMode('draw');
   $('eraseBtn').onclick = () => setMode('erase');
@@ -1020,6 +1108,7 @@ canvas.erasing { cursor: cell; }
     if (!running) return;
     paused = v;
     stroke = null;
+    Sound.drawStop(false);
     Sound.setPlaying(!v);
     $('paused').hidden = !v;
     if (v) $('resumeBtn').focus();
