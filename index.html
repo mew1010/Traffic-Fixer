@@ -27,6 +27,7 @@
   --building-edge: #2f3331;
   --accent: #f2c230;        /* signage yellow: asphalt, rewards, highlights */
   --warn: #d8402f;
+  --jam: #f08a24;           /* slow traffic */
   --freeze: #3d8fd1;        /* time stopped */
   --preview: rgba(74, 79, 76, .55);
   --preview-bad: rgba(216, 64, 47, .55);
@@ -303,24 +304,21 @@ canvas.erasing { cursor: cell; }
   const MISSIONS = [
     { kind: 'deliver', n: 50, reward: 200 },
     { kind: 'linked', n: 8, reward: 250 },
-    { kind: 'calm', n: 120, reward: 300 },
     { kind: 'level', lvl: 1, n: 1, reward: 300 },
     { kind: 'deliver', n: 150, reward: 400 },
     { kind: 'everyPlace', n: 15, reward: 400 },
     { kind: 'points', n: 600, reward: 500 },
     { kind: 'level', lvl: 2, n: 1, reward: 600 },
-    { kind: 'calm', n: 240, reward: 600 },
     { kind: 'deliver', n: 400, reward: 800 },
   ];
   function mission(i) {
     if (i < MISSIONS.length) return MISSIONS[i];
-    const k = i - MISSIONS.length, step = Math.floor(k / 4) + 1;
+    const k = i - MISSIONS.length, step = Math.floor(k / 3) + 1;
     return [
       { kind: 'deliver', n: 400 + 200 * step, reward: 800 + 150 * step },
       { kind: 'points', n: 1500 * step, reward: 900 + 150 * step },
-      { kind: 'calm', n: Math.min(600, 240 + 60 * step), reward: 700 + 150 * step },
       { kind: 'level', lvl: 3, n: step, reward: 1000 + 150 * step },
-    ][k % 4];
+    ][k % 3];
   }
   const NAME_KEY = 'trafik-cozucu-name', RECORD_KEY = 'trafik-cozucu-record';
 
@@ -555,10 +553,10 @@ canvas.erasing { cursor: cell; }
 
   function newGame() {
     S = {
-      t: 0, asphalt: START_ASPHALT, score: 0, delivered: 0, calm: 0,
+      t: 0, asphalt: START_ASPHALT, score: 0, delivered: 0,
       nodes: new Map(), edges: new Map(), nid: 1, eid: 1,
       houses: [], places: [], cars: [],
-      nextHouse: 14, nextPlace: 55, nextExpand: EXPAND_EVERY, stage: 0, placeIndex: 0,
+      nextHouse: 14, nextPlace: 55, nextExpand: EXPAND_EVERY, stage: 0,
       history: [],                // edge ids of recent roads, newest last, for undo
       mi: 0, mBase: null, chance: true, lost: null,
     };
@@ -579,7 +577,7 @@ canvas.erasing { cursor: cell; }
   // ---------- Road graph ----------
   // Roads are a graph of short straight pieces; a drawn curve becomes a chain of them.
   function addNode(x, y, fixed = false) {
-    const n = { id: S.nid++, x, y, edges: new Set(), fixed, hold: null, holdT: 0 };
+    const n = { id: S.nid++, x, y, edges: new Set(), fixed, holds: new Map() };
     S.nodes.set(n.id, n);
     return n;
   }
@@ -724,18 +722,49 @@ canvas.erasing { cursor: cell; }
     }
     return null;
   }
+  // The colour whose homes have the most demand per place gets a second place once it is busy;
+  // otherwise a colour the town does not have yet.
+  function nextPlaceDef() {
+    const used = new Set(S.places.map(p => p.color));
+    let busiest = null, load = 0;
+    for (const c of used) {
+      const l = S.houses.filter(h => h.color === c).reduce((sum, h) => sum + h.level + 1, 0) / S.places.filter(p => p.color === c).length;
+      if (l > load) { load = l; busiest = c; }
+    }
+    const fresh = PLACES.find(d => !used.has(d.color));
+    return busiest && (load >= 6 || !fresh) ? PLACES.find(d => d.color === busiest) : fresh;
+  }
   function addPlace(near, dMin, dMax) {
-    const def = PLACES[S.placeIndex % PLACES.length];
+    const def = nextPlaceDef();
+    // a second place of a colour opens near that colour's homes
+    if (!near && S.places.some(p => p.color === def.color)) {
+      const homes = S.houses.filter(h => h.color === def.color);
+      near = homes[Math.floor(Math.random() * homes.length)];
+    }
     // leave room for the building to grow to its biggest size
-    const spot = freeSpot(PLACE_R[2], near, dMin, dMax);
+    const spot = freeSpot(PLACE_R[2], near, dMin, dMax) || (near && freeSpot(PLACE_R[2]));
     if (!spot) return null;
-    S.placeIndex++;
     const ent = { x: spot.x + spot.dir[0] * (PLACE_R[0] + 11), y: spot.y + spot.dir[1] * (PLACE_R[0] + 11) };
     const e = addNode(ent.x, ent.y, true);
-    const p = { kind: 'place', def, name: def.names[0], color: def.color, x: spot.x, y: spot.y, r: PLACE_R[0], level: 0, got: 0, dir: spot.dir, entrance: e.id };
+    const p = { kind: 'place', def, name: def.names[0], color: def.color, x: spot.x, y: spot.y, r: PLACE_R[0], level: 0, got: 0, dir: spot.dir, entrances: [e.id], sides: [spot.dir] };
     S.places.push(p);
     return p;
   }
+  // Open another entrance on a free side, the far side first. Returns whether one was added.
+  function addDoor(p) {
+    const far = p.sides[0], d = PLACE_R[p.level] + 11;
+    const sides = [[-far[0], -far[1]], [far[1], far[0]], [-far[1], -far[0]]].filter(sd => !p.sides.some(o => o[0] === sd[0] && o[1] === sd[1]));
+    for (const [dx, dy] of sides) {
+      const at = { x: p.x + dx * d, y: p.y + dy * d };
+      if (!inRegion(at) || blocked(at, 9) || inRiver(at, 10)) continue;
+      if ([...S.edges.values()].some(e => nearestOnSeg(at, S.nodes.get(e.a), S.nodes.get(e.b)).d < 12)) continue;
+      p.entrances.push(addNode(at.x, at.y, true).id);
+      p.sides.push([dx, dy]);
+      return true;
+    }
+    return false;
+  }
+  const doors = b => b.entrances || [b.entrance];
   function addHouse(color, near) {
     const spot = freeSpot(HOUSE_LEVELS[3].r, near);
     if (!spot) return null;
@@ -796,7 +825,7 @@ canvas.erasing { cursor: cell; }
     p.r = PLACE_R[p.level];
     p.name = p.def.names[p.level];
     Sound.place();
-    toast(`${old} büyüdü: ${p.name}`);
+    toast(addDoor(p) ? `${old} büyüdü: ${p.name}, yeni giriş açıldı` : `${old} büyüdü: ${p.name}`);
   }
 
   // ---------- Routing ----------
@@ -804,7 +833,7 @@ canvas.erasing { cursor: cell; }
   // so cars spread onto alternative roads when the player builds them.
   let segCars = new Map();         // "a>b" -> cars on that directed piece
   function route(from, color) {
-    const goals = new Set(S.places.filter(p => p.color === color).map(p => p.entrance));
+    const goals = new Set(S.places.filter(p => p.color === color).flatMap(p => p.entrances));
     if (!goals.size) return null;
     const best = new Map([[from, 0]]), prev = new Map();
     const heap = [[0, from]];
@@ -822,7 +851,7 @@ canvas.erasing { cursor: cell; }
         const e = S.edges.get(id), v = e.a === u ? e.b : e.a;
         const nv = S.nodes.get(v);
         const busy = segCars.get(u + '>' + v)?.length || 0;
-        const w = e.len + 16 * busy + (isJunction(nv) ? 3 : 0) + (nv.fixed && !goals.has(v) ? 25 : 0);
+        const w = e.len + 35 * busy + (isJunction(nv) ? 3 : 0) + (nv.fixed && !goals.has(v) ? 25 : 0);
         const nc = c + w;
         if (nc < (best.get(v) ?? Infinity)) { best.set(v, nc); prev.set(v, u); push([nc, v]); }
       }
@@ -847,7 +876,7 @@ canvas.erasing { cursor: cell; }
     }
     return S.houses.filter(h => {
       const k = comp.get(h.entrance);
-      return k && S.places.some(p => p.color === h.color && comp.get(p.entrance) === k);
+      return k && S.places.some(p => p.color === h.color && p.entrances.some(id => comp.get(id) === k));
     }).length;
   }
 
@@ -882,9 +911,16 @@ canvas.erasing { cursor: cell; }
   }
   function releaseHold(car) {
     if (!car.hold) return;
-    const hn = S.nodes.get(car.hold);
-    if (hn && hn.hold === car.id) hn.hold = null;
+    S.nodes.get(car.hold)?.holds.delete(car.id);
     car.hold = null;
+  }
+  // Up to three cars share a junction as long as no two of them leave by the same road.
+  function canEnter(n, out) {
+    for (const [id, h] of n.holds) {
+      if (S.t - h.t > 1.5) n.holds.delete(id);      // never let a stuck car lock a junction for good
+      else if (h.out === out) return false;
+    }
+    return n.holds.size < 3;
   }
   function returnTrip(car) {
     releaseHold(car);
@@ -896,7 +932,7 @@ canvas.erasing { cursor: cell; }
     S.score += v;
     S.asphalt += v * KG_PER_POINT;
     S.delivered++;
-    const pl = S.places.find(p => p.entrance === car.path[car.path.length - 1]);
+    const pl = S.places.find(p => p.entrances.includes(car.path[car.path.length - 1]));
     if (pl) growPlace(pl);
     const h = S.houses[car.house];
     if (h) growHouse(h);
@@ -915,7 +951,7 @@ canvas.erasing { cursor: cell; }
       if (h.waiting > 0 && h.cool <= 0) {
         const path = route(h.entrance, h.color);
         if (path && path.length >= 2 && roomAfter({ path }, 0)) {
-          S.cars.push({ id: S.nid++, house: idx, level: h.level, color: h.color, path, i: 0, d: 0, routeT: S.t, hold: null, holdLeft: 0 });
+          S.cars.push({ id: S.nid++, house: idx, level: h.level, color: h.color, path, i: 0, d: 0, routeT: S.t, hold: null, holdLeft: 0, slow: false });
           h.waiting--;
           h.cool = 0.6;
           indexCars();
@@ -934,15 +970,16 @@ canvas.erasing { cursor: cell; }
       const isLast = car.i + 1 === car.path.length - 1;
       // one car at a time through a junction, and only if there is room on the far side
       if (!isLast && isJunction(nb) && car.hold !== nb.id) {
-        const free = !nb.hold || nb.hold === car.id || S.t - nb.holdT > 1.5;
+        const out = car.path[car.i + 2];
         const toStop = len - car.d - 4;
-        if (!free || !roomAfter(car, car.i + 1)) allowed = Math.min(allowed, toStop);
+        if (!canEnter(nb, out) || !roomAfter(car, car.i + 1)) allowed = Math.min(allowed, toStop);
         else if (toStop < SPEED * dt + 2) {
           releaseHold(car);
-          nb.hold = car.id; nb.holdT = S.t; car.hold = nb.id; car.holdLeft = (len - car.d) + 12;
+          nb.holds.set(car.id, { out, t: S.t }); car.hold = nb.id; car.holdLeft = (len - car.d) + 12;
         }
       }
       const step = Math.max(0, Math.min(SPEED * dt, allowed));
+      car.slow = step < SPEED * dt * 0.35;
       car.d += step;
       if (car.hold) { car.holdLeft -= step; if (car.holdLeft <= 0) releaseHold(car); }
       while (car.d >= len) {
@@ -962,18 +999,20 @@ canvas.erasing { cursor: cell; }
       }
     }
     if (done.size) S.cars = S.cars.filter(c => !done.has(c));
+    // jam heat per road piece: rises while cars crawl on it, fades over a couple of seconds
+    const fade = Math.exp(-dt / 1.5);
+    for (const e of S.edges.values()) e.heat = (e.heat || 0) * fade;
+    for (const car of S.cars) if (car.slow) { const e = edgeBetween(car.path[car.i], car.path[car.i + 1]); if (e) e.heat = Math.min(3, e.heat + dt * 1.5); }
   }
 
   // ---------- Missions ----------
   function startMission() {
     S.mBase = { delivered: S.delivered, score: S.score, got: new Map(S.places.map(p => [p, p.got])) };
-    S.calm = 0;
   }
   function missionProgress(m) {
     switch (m.kind) {
       case 'deliver': return S.delivered - S.mBase.delivered;
       case 'points': return S.score - S.mBase.score;
-      case 'calm': return Math.floor(S.calm);
       case 'linked': return linkedHouses();
       case 'level': return S.houses.filter(h => h.level >= m.lvl).length;
       case 'everyPlace': return Math.min(...S.places.map(p => p.got - (S.mBase.got.get(p) ?? 0)));
@@ -984,7 +1023,6 @@ canvas.erasing { cursor: cell; }
     switch (m.kind) {
       case 'deliver': return `${m.n} araba ulaştır`;
       case 'points': return `${m.n} puan topla`;
-      case 'calm': return `${m.n / 60} dakika hiç uyarı almadan dayan`;
       case 'linked': return `${m.n} evi kendi mekanına bağla`;
       case 'level': return `${m.n} ${HOUSE_LEVELS[m.lvl].name.toLocaleLowerCase('tr')} yetiştir`;
       case 'everyPlace': return `Her mekana ${m.n} araba ulaştır`;
@@ -996,7 +1034,7 @@ canvas.erasing { cursor: cell; }
     $('mText').textContent = missionText(m);
     $('mReward').textContent = `+${m.reward} kg`;
     $('mBar').style.width = `${(v / m.n) * 100}%`;
-    $('mCount').textContent = m.kind === 'calm' ? `${fmtTime(v)} / ${fmtTime(m.n)}` : `${v} / ${m.n}`;
+    $('mCount').textContent = `${v} / ${m.n}`;
     if (v < m.n) return;
     S.asphalt += m.reward;
     bump();
@@ -1019,7 +1057,6 @@ canvas.erasing { cursor: cell; }
         if (!worst || h.warn < worst.warn) worst = h;
       }
     }
-    S.calm = worst ? 0 : S.calm + dt;
     const alarm = $('alarm');
     if (worst) {
       alarm.hidden = false;
@@ -1311,7 +1348,7 @@ canvas.erasing { cursor: cell; }
   // ---------- Rendering ----------
   function readColors() {
     const cs = getComputedStyle(document.documentElement);
-    for (const n of ['ground', 'ground-mark', 'fog', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'preview', 'preview-bad', 'fg',
+    for (const n of ['ground', 'ground-mark', 'fog', 'road', 'road-edge', 'road-line', 'building', 'building-edge', 'accent', 'warn', 'jam', 'preview', 'preview-bad', 'fg',
       'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'water', 'water-edge', 'tree', 'tree-dark', 'rock', 'rock-edge', 'bridge', 'night', 'lamp']) {
       colors[n] = cs.getPropertyValue('--' + n).trim();
     }
@@ -1401,8 +1438,8 @@ canvas.erasing { cursor: cell; }
     }
 
     // driveways from each building to its entrance
-    for (const b of buildings()) {
-      const en = S.nodes.get(b.entrance);
+    for (const b of buildings()) for (const id of doors(b)) {
+      const en = S.nodes.get(id);
       ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = 9;
       ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(en.x, en.y); ctx.stroke();
       ctx.strokeStyle = colors.road; ctx.lineWidth = 6; ctx.stroke();
@@ -1425,6 +1462,16 @@ canvas.erasing { cursor: cell; }
     ctx.lineCap = 'round';
     ctx.strokeStyle = colors['road-edge']; ctx.lineWidth = ROAD_W + 3; ctx.stroke(roads);
     ctx.strokeStyle = colors.road; ctx.lineWidth = ROAD_W; ctx.stroke(roads);
+    // jammed stretches glow orange, then red
+    const busy = [new Path2D(), new Path2D()];
+    for (const e of S.edges.values()) if (e.heat > 0.4) {
+      const a = S.nodes.get(e.a), b = S.nodes.get(e.b), path = busy[e.heat > 1.3 ? 1 : 0];
+      path.moveTo(a.x, a.y); path.lineTo(b.x, b.y);
+    }
+    ctx.lineWidth = ROAD_W - 4;
+    ctx.globalAlpha = 0.55; ctx.strokeStyle = colors.jam; ctx.stroke(busy[0]);
+    ctx.globalAlpha = 0.65; ctx.strokeStyle = colors.warn; ctx.stroke(busy[1]);
+    ctx.globalAlpha = 1;
     // white dashed centre line, drawn along whole stretches so the dashes flow round curves
     const lanes = new Path2D();
     for (const chain of roadChains()) chain.forEach((q, i) => i ? lanes.lineTo(q.x, q.y) : lanes.moveTo(q.x, q.y));
@@ -1495,8 +1542,8 @@ canvas.erasing { cursor: cell; }
 
     // entrances: a pulsing ring until something is connected
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
-    for (const b of buildings()) {
-      const en = S.nodes.get(b.entrance);
+    for (const b of buildings()) for (const id of doors(b)) {
+      const en = S.nodes.get(id);
       const linked = en.edges.size > 0;
       ctx.fillStyle = '#fff'; ctx.strokeStyle = colors['c' + b.color]; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(en.x, en.y, linked ? 3.5 : 5 + pulse * 1.5, 0, 7); ctx.fill(); ctx.stroke();
